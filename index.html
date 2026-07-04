@@ -1,0 +1,1050 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Cut-off Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy-950:#ffffff;
+    --navy-900:#ffffff;
+    --navy-800:#f5f1ea;
+    --navy-700:#e2d9c9;
+    --navy-600:#cdbea3;
+    --gold:#9c714a;
+    --gold-bright:#c79a68;
+    --gold-dim:#7a5636;
+    --text-hi:#2a2018;
+    --text-mid:#5c5248;
+    --text-dim:#948a7d;
+    --aff:#9c714a;
+    --aff-bg:#f1ece3;
+    --st-newhire:#1f7a4c;
+    --st-newhire-bg:#e4f5ec;
+    --st-separation:#b23a4a;
+    --st-separation-bg:#fbe6ea;
+    --st-maternity:#9c7a1f;
+    --st-maternity-bg:#faf1da;
+    --st-nologs:#6b6b73;
+    --st-nologs-bg:#eeeeee;
+    --logs-checked:#0f7a7a;
+    --logs-checked-bg:#e0f5f5;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--navy-950);
+    color:var(--text-hi);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    padding:32px 40px 80px;
+  }
+  header{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:20px;
+    border-bottom:1px solid var(--navy-700);
+    padding-bottom:22px;
+    margin-bottom:20px;
+  }
+  .eyebrow{
+    text-transform:uppercase;
+    letter-spacing:0.22em;
+    font-size:11px;
+    color:var(--gold);
+    font-weight:600;
+    margin-bottom:6px;
+  }
+  h1{
+    font-family:'Playfair Display',serif;
+    font-size:32px;
+    font-weight:800;
+    margin:0;
+    color:var(--text-hi);
+    letter-spacing:0.01em;
+  }
+  .subtitle{
+    color:var(--text-dim);
+    font-size:13.5px;
+    margin-top:6px;
+    max-width:560px;
+  }
+  .header-actions{
+    display:flex;
+    gap:10px;
+    align-items:center;
+  }
+  .btn{
+    background:var(--navy-800);
+    border:1px solid var(--navy-600);
+    color:var(--text-hi);
+    padding:10px 16px;
+    border-radius:7px;
+    font-size:13px;
+    font-weight:600;
+    cursor:pointer;
+    transition:all .15s ease;
+    font-family:'Inter',sans-serif;
+  }
+  .btn:hover{border-color:var(--gold-dim); background:var(--navy-700);}
+  .btn-gold{
+    background:linear-gradient(135deg,var(--gold-bright),var(--gold));
+    color:#1a1305;
+    border:none;
+  }
+  .btn-gold:hover{filter:brightness(1.08);}
+  #fileInput{display:none;}
+
+  /* Affiliate tabs */
+  .affiliate-bar{
+    display:flex;
+    gap:8px;
+    margin-bottom:20px;
+    flex-wrap:wrap;
+  }
+  .affiliate-tab{
+    padding:10px 20px;
+    border-radius:8px 8px 0 0;
+    border:1px solid var(--navy-700);
+    border-bottom:3px solid transparent;
+    background:var(--navy-900);
+    color:var(--text-dim);
+    font-weight:700;
+    font-size:13px;
+    letter-spacing:0.03em;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+  }
+  .affiliate-tab .dot{
+    display:inline-block;
+    width:8px;height:8px;
+    border-radius:50%;
+    margin-right:8px;
+    background:var(--dotcolor,#999);
+    vertical-align:middle;
+  }
+  .affiliate-tab.active{
+    background:var(--navy-800);
+    color:var(--text-hi);
+    border-bottom-color:var(--tabcolor,var(--gold));
+  }
+
+  .period-bar{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    margin-bottom:22px;
+  }
+  .period-chip{
+    padding:8px 14px;
+    border-radius:20px;
+    border:1px solid var(--navy-600);
+    background:var(--navy-800);
+    color:var(--text-mid);
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    white-space:nowrap;
+  }
+  .period-chip.active{
+    background:var(--aff);
+    color:#ffffff;
+    border-color:var(--aff);
+  }
+  .period-chip.add-new{
+    background:var(--navy-800);
+    color:var(--aff);
+    border:1px dashed var(--navy-600);
+    font-weight:800;
+    font-size:15px;
+    padding:8px 16px;
+  }
+  .period-chip.add-new:hover{background:var(--navy-700);}
+
+  .stats-row{
+    display:grid;
+    grid-template-columns:repeat(6,1fr);
+    gap:12px;
+    margin-bottom:22px;
+  }
+  .stat-card{
+    background:var(--navy-900);
+    border:1px solid var(--navy-700);
+    border-radius:10px;
+    padding:14px 16px;
+    box-shadow:0 1px 3px rgba(42,32,24,0.06);
+  }
+  .stat-num{font-family:'Playfair Display',serif; font-size:26px; font-weight:700; color:var(--text-hi);}
+  .stat-label{font-size:10.5px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); margin-top:2px;}
+  .stat-card.newhire .stat-num{color:var(--st-newhire);}
+  .stat-card.separation .stat-num{color:var(--st-separation);}
+  .stat-card.maternity .stat-num{color:var(--st-maternity);}
+  .stat-card.nologs .stat-num{color:var(--st-nologs);}
+  .stat-card.pending .stat-num{color:var(--aff);}
+
+  .toolbar{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+    gap:12px;
+    margin-bottom:14px;
+  }
+  .search-box{
+    background:var(--navy-900);
+    border:1px solid var(--navy-700);
+    border-radius:7px;
+    padding:9px 14px;
+    color:var(--text-hi);
+    font-size:13px;
+    width:260px;
+    font-family:'Inter',sans-serif;
+  }
+  .search-box::placeholder{color:var(--text-dim);}
+  .filter-pills{display:flex; gap:6px; flex-wrap:wrap;}
+  .pill{
+    padding:6px 12px;
+    border-radius:16px;
+    font-size:11.5px;
+    font-weight:600;
+    border:1px solid var(--navy-600);
+    background:transparent;
+    color:var(--text-mid);
+    cursor:pointer;
+  }
+  .pill.active{background:var(--navy-700); color:var(--text-hi); border-color:var(--aff);}
+
+  table{
+    width:100%;
+    border-collapse:collapse;
+    background:var(--navy-900);
+    border:1px solid var(--navy-700);
+    border-radius:10px;
+    overflow:hidden;
+    box-shadow:0 1px 3px rgba(42,32,24,0.06);
+  }
+  thead th{
+    background:var(--navy-800);
+    color:var(--aff);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    font-size:10.5px;
+    font-weight:700;
+    padding:12px 14px;
+    text-align:left;
+    border-bottom:1px solid var(--navy-600);
+  }
+  tbody td{
+    padding:10px 14px;
+    font-size:13px;
+    color:var(--text-mid);
+    border-bottom:1px solid var(--navy-800);
+    vertical-align:middle;
+  }
+  tbody tr:hover td{background:rgba(42,32,24,0.03);}
+  .name-cell{color:var(--text-hi); font-weight:600;}
+  .newhire-badge{
+    display:inline-block;
+    margin-left:8px;
+    padding:2px 8px;
+    border-radius:10px;
+    background:var(--st-newhire-bg);
+    color:var(--st-newhire);
+    font-size:9.5px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    vertical-align:middle;
+  }
+  select.status-select{
+    background:var(--navy-800);
+    border:1px solid var(--navy-600);
+    color:var(--text-hi);
+    padding:6px 10px;
+    border-radius:6px;
+    font-size:12px;
+    font-weight:600;
+    font-family:'Inter',sans-serif;
+    cursor:pointer;
+  }
+  tr.status-newhire td.status-cell select{border-color:var(--st-newhire); color:var(--st-newhire);}
+  tr.status-separation td.status-cell select{border-color:var(--st-separation); color:var(--st-separation);}
+  tr.status-maternity td.status-cell select{border-color:var(--st-maternity); color:var(--st-maternity);}
+  tr.status-nologs td.status-cell select{border-color:var(--st-nologs); color:var(--st-nologs);}
+
+  tr.status-newhire{background:var(--st-newhire-bg);}
+  tr.status-separation{background:var(--st-separation-bg);}
+  tr.status-maternity{background:var(--st-maternity-bg);}
+  tr.status-nologs{background:var(--st-nologs-bg);}
+
+  .remarks-input{
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--text-mid);
+    font-size:12.5px;
+    font-family:'Inter',sans-serif;
+    width:100%;
+    padding:5px 6px;
+    border-radius:5px;
+  }
+  .remarks-input:focus{background:var(--navy-800); border-color:var(--navy-600); outline:none; color:var(--text-hi);}
+
+  .logs-cell{text-align:center;}
+  .logs-toggle{
+    width:100%;
+    padding:7px 4px;
+    border-radius:6px;
+    border:1px solid var(--navy-600);
+    background:var(--navy-800);
+    color:var(--text-dim);
+    font-size:11px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    cursor:pointer;
+  }
+  .logs-toggle.checked{
+    background:var(--logs-checked-bg);
+    border-color:var(--logs-checked);
+    color:var(--logs-checked);
+  }
+
+  .empty-state{
+    text-align:center;
+    padding:80px 20px;
+    color:var(--text-dim);
+  }
+  .empty-state h2{font-family:'Playfair Display',serif; color:var(--text-hi); font-size:22px; margin-bottom:8px;}
+  .footer-note{
+    margin-top:18px;
+    font-size:11.5px;
+    color:var(--text-dim);
+    text-align:center;
+  }
+  ::-webkit-scrollbar{height:8px; width:8px;}
+  ::-webkit-scrollbar-thumb{background:var(--navy-600); border-radius:4px;}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <div class="eyebrow">HR Service Delivery &middot; PGB</div>
+    <h1 id="pageTitle">Cut-off Tracker</h1>
+    <div class="subtitle">One tracker, five affiliates: who's new, who's excluded, and who's cleared on logs — every cut-off.</div>
+  </div>
+  <div class="header-actions">
+    <span id="syncIndicator" style="font-size:11.5px;color:var(--text-dim);margin-right:4px;">Loading…</span>
+    <input type="file" id="fileInput" accept=".xlsx,.xls">
+    <button class="btn" id="importBtn">Import Cut-off Workbook</button>
+    <button class="btn btn-gold" id="exportBtn">Export Current Cut-off (CSV)</button>
+  </div>
+</header>
+
+<div class="affiliate-bar" id="affiliateBar"></div>
+
+<div id="periodBar" class="period-bar"></div>
+
+<div id="statsRow" class="stats-row" style="display:none;">
+  <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Total Staff</div></div>
+  <div class="stat-card newhire"><div class="stat-num" id="statNewHire">0</div><div class="stat-label">New Hire</div></div>
+  <div class="stat-card separation"><div class="stat-num" id="statSeparation">0</div><div class="stat-label">Separation</div></div>
+  <div class="stat-card maternity"><div class="stat-num" id="statMaternity">0</div><div class="stat-label">Maternity</div></div>
+  <div class="stat-card nologs"><div class="stat-num" id="statNoLogs">0</div><div class="stat-label">No Logs</div></div>
+  <div class="stat-card pending"><div class="stat-num" id="statPending">0</div><div class="stat-label">Logs Pending</div></div>
+</div>
+
+<div class="toolbar" id="toolbar" style="display:none;">
+  <input type="text" class="search-box" id="searchBox" placeholder="Search name or ID no...">
+  <div class="filter-pills" id="filterPills">
+    <button class="pill active" data-filter="all">All</button>
+    <button class="pill" data-filter="Active">Active</button>
+    <button class="pill" data-filter="New Hire">New Hire</button>
+    <button class="pill" data-filter="Separation">Separation</button>
+    <button class="pill" data-filter="Maternity">Maternity</button>
+    <button class="pill" data-filter="No Logs">No Logs</button>
+    <button class="pill" data-filter="__pending">Logs Pending</button>
+  </div>
+  <button class="btn btn-gold" id="addEmployeeBtn">+ Add Employee</button>
+</div>
+
+<div id="tableWrap">
+  <div class="empty-state">
+    <h2>No cut-off loaded yet</h2>
+    <div>Pick an affiliate tab above, then import that affiliate's cut-off workbook (.xlsx). Your tagging and logs-checked marks are saved automatically in this browser, per affiliate.</div>
+  </div>
+</div>
+
+<div class="footer-note" id="footerNote"></div>
+
+<script>
+const STATUS_LIST = ['Active','New Hire','Separation','Maternity','No Logs'];
+
+// Affiliate config: name -> accent color (kept consistent with existing PGB affiliate color coding where established)
+const AFFILIATES = [
+  { key:'PHI',   color:'#2e8a55' },  // green — matches existing PHI convention
+  { key:'PPC',   color:'#3163b0' },  // blue — matches existing PPC convention
+  { key:'PSI',   color:'#1f8b83' },  // teal
+  { key:'SKILLS',color:'#9c714a' },  // brown
+  { key:'PSEFI', color:'#a44f77' }   // rose
+];
+
+const DASHBOARD_KEY = '__dashboard__';
+let currentAffiliate = DASHBOARD_KEY;
+
+// Per-affiliate in-memory state, hydrated from Claude's persistent artifact storage (syncs across devices for this account)
+let store = {};
+AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], trackerState:{}, currentPeriod:null });
+
+let currentFilter = 'all';
+let searchTerm = '';
+let syncStatus = 'idle'; // idle | syncing | error
+
+function storageKey(affKey){ return `affTracker_${affKey}`; }
+
+function setSyncStatus(s){
+  syncStatus = s;
+  const el = document.getElementById('syncIndicator');
+  if(!el) return;
+  if(s === 'syncing'){ el.textContent = 'Syncing…'; el.style.color = 'var(--text-dim)'; }
+  else if(s === 'error'){ el.textContent = 'Sync failed — check connection'; el.style.color = 'var(--st-separation)'; }
+  else { el.textContent = 'Synced'; el.style.color = 'var(--st-newhire)'; }
+}
+
+async function loadFromStorage(){
+  setSyncStatus('syncing');
+  for(const a of AFFILIATES){
+    try{
+      const result = await window.storage.get(storageKey(a.key), false);
+      if(result && result.value){
+        const parsed = JSON.parse(result.value);
+        store[a.key] = {
+          workbookData: parsed.workbookData || {},
+          periodOrder: parsed.periodOrder || [],
+          trackerState: parsed.trackerState || {},
+          currentPeriod: parsed.currentPeriod || null
+        };
+      }
+    }catch(e){
+      // key doesn't exist yet for this affiliate — leave it as empty default
+    }
+  }
+  setSyncStatus('idle');
+}
+
+async function saveAffiliate(affKey){
+  setSyncStatus('syncing');
+  try{
+    const result = await window.storage.set(storageKey(affKey), JSON.stringify(store[affKey]), false);
+    if(!result){ setSyncStatus('error'); return; }
+    setSyncStatus('idle');
+  }catch(e){
+    console.error('Storage error', e);
+    setSyncStatus('error');
+  }
+}
+
+function guessStatus(remarksOriginal){
+  if(!remarksOriginal) return 'Active';
+  const r = remarksOriginal.toLowerCase();
+  if(r.includes('resign') || r.includes('separat') || r.includes('end of contract') || r.includes('eoc')) return 'Separation';
+  if(r.includes('matern')) return 'Maternity';
+  if(r.includes('no log')) return 'No Logs';
+  return 'Active';
+}
+
+function currentAffColor(){
+  const found = AFFILIATES.find(a => a.key === currentAffiliate);
+  return found ? found.color : '#9c714a';
+}
+
+function applyAffiliateTheme(){
+  document.documentElement.style.setProperty('--aff', currentAffColor());
+  document.getElementById('pageTitle').textContent = currentAffiliate === DASHBOARD_KEY ? 'Main Dashboard' : 'Cut-off Tracker';
+}
+
+function getAffiliateCounts(affKey){
+  const aff = store[affKey];
+  if(!aff.currentPeriod) return null;
+  const rows = aff.workbookData[aff.currentPeriod];
+  const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
+  const counts = {period: aff.currentPeriod, total: rows.length, active:0, newhire:0, separation:0, maternity:0, nologs:0, pending:0};
+  rows.forEach(r => {
+    const st = stateForPeriod[r.idno];
+    if(!st) return;
+    if(st.status === 'Active') counts.active++;
+    if(st.status === 'New Hire') counts.newhire++;
+    if(st.status === 'Separation') counts.separation++;
+    if(st.status === 'Maternity') counts.maternity++;
+    if(st.status === 'No Logs') counts.nologs++;
+    if(!st.logsChecked) counts.pending++;
+  });
+  return counts;
+}
+
+document.getElementById('importBtn').addEventListener('click', () => {
+  if(currentAffiliate === DASHBOARD_KEY){ alert('Select an affiliate tab first, then import that affiliate\'s workbook.'); return; }
+  document.getElementById('fileInput').click();
+});
+
+document.getElementById('fileInput').addEventListener('change', function(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt){
+    const data = new Uint8Array(evt.target.result);
+    const wb = XLSX.read(data, {type:'array'});
+    const newWorkbookData = {};
+    const newOrder = [];
+    wb.SheetNames.forEach(sheetName => {
+      const ws = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(ws, {range:1, defval:null});
+      const cleanRows = rows
+        .filter(r => r.IDNO)
+        .map(r => ({
+          no: r.NO,
+          location: r.LOCATION || '',
+          idno: String(r.IDNO).trim(),
+          lastname: r.LASTNAME || '',
+          firstname: r.FIRSTNAME || '',
+          remarksOriginal: r.REMARKS || ''
+        }));
+      if(cleanRows.length){
+        newWorkbookData[sheetName] = cleanRows;
+        newOrder.push(sheetName);
+      }
+    });
+
+    const aff = store[currentAffiliate];
+
+    // Merge sheets into existing data instead of replacing it — so importing
+    // a file with just the new cut-off sheet (or the full updated workbook)
+    // both work without losing prior cut-offs.
+    const mergedWorkbookData = Object.assign({}, aff.workbookData);
+    const mergedPeriodOrder = aff.periodOrder.slice();
+    newOrder.forEach(periodName => {
+      mergedWorkbookData[periodName] = newWorkbookData[periodName]; // add, or overwrite if re-importing a correction
+      if(!mergedPeriodOrder.includes(periodName)) mergedPeriodOrder.push(periodName);
+    });
+
+    const mergedTrackerState = aff.trackerState || {};
+    mergedPeriodOrder.forEach((periodName, idx) => {
+      if(!mergedTrackerState[periodName]) mergedTrackerState[periodName] = {};
+      const prevPeriodName = idx > 0 ? mergedPeriodOrder[idx-1] : null;
+      const prevIds = prevPeriodName ? new Set(mergedWorkbookData[prevPeriodName].map(r=>r.idno)) : null;
+      mergedWorkbookData[periodName].forEach(row => {
+        if(!mergedTrackerState[periodName][row.idno]){
+          let status;
+          if(prevIds && !prevIds.has(row.idno)){
+            status = 'New Hire';
+          } else {
+            status = guessStatus(row.remarksOriginal);
+          }
+          mergedTrackerState[periodName][row.idno] = {
+            status: status,
+            logsChecked: false,
+            remarks: row.remarksOriginal || ''
+          };
+        }
+      });
+    });
+
+    store[currentAffiliate] = {
+      workbookData: mergedWorkbookData,
+      periodOrder: mergedPeriodOrder,
+      trackerState: mergedTrackerState,
+      currentPeriod: mergedPeriodOrder[mergedPeriodOrder.length-1]
+    };
+    saveAffiliate(currentAffiliate);
+    renderAll();
+  };
+  reader.readAsArrayBuffer(file);
+  // reset input so importing the same filename again still fires 'change'
+  e.target.value = '';
+});
+
+function renderAll(){
+  renderAffiliateBar();
+  applyAffiliateTheme();
+  if(currentAffiliate === DASHBOARD_KEY){
+    document.getElementById('periodBar').innerHTML = '';
+    document.getElementById('toolbar').style.display = 'flex';
+    document.getElementById('addEmployeeBtn').style.display = 'none';
+    renderDashboardView();
+  } else {
+    document.getElementById('addEmployeeBtn').style.display = 'inline-block';
+    renderPeriodBar();
+    renderStatsAndTable();
+  }
+}
+
+function renderAffiliateBar(){
+  const bar = document.getElementById('affiliateBar');
+  bar.innerHTML = '';
+
+  const dashTab = document.createElement('button');
+  dashTab.className = 'affiliate-tab' + (currentAffiliate === DASHBOARD_KEY ? ' active' : '');
+  dashTab.style.setProperty('--dotcolor', '#9c714a');
+  dashTab.style.setProperty('--tabcolor', '#9c714a');
+  dashTab.innerHTML = `<span class="dot"></span>Main Dashboard`;
+  dashTab.addEventListener('click', () => {
+    currentAffiliate = DASHBOARD_KEY;
+    renderAll();
+  });
+  bar.appendChild(dashTab);
+
+  AFFILIATES.forEach(a => {
+    const tab = document.createElement('button');
+    tab.className = 'affiliate-tab' + (a.key === currentAffiliate ? ' active' : '');
+    tab.style.setProperty('--dotcolor', a.color);
+    tab.style.setProperty('--tabcolor', a.color);
+    const periodCount = store[a.key].periodOrder.length;
+    tab.innerHTML = `<span class="dot"></span>${a.key}${periodCount ? '' : ' <span style="opacity:.5;font-weight:400;">(empty)</span>'}`;
+    tab.addEventListener('click', () => {
+      currentAffiliate = a.key;
+      currentFilter = 'all';
+      searchTerm = '';
+      document.getElementById('searchBox').value = '';
+      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      document.querySelector('.pill[data-filter="all"]').classList.add('active');
+      renderAll();
+    });
+    bar.appendChild(tab);
+  });
+}
+
+function renderDashboardView(){
+  document.getElementById('statsRow').style.display = 'grid';
+
+  let grand = {total:0, newhire:0, separation:0, maternity:0, nologs:0, pending:0};
+  const summaryRowsHtml = AFFILIATES.map(a => {
+    const c = getAffiliateCounts(a.key);
+    if(c){
+      grand.total += c.total;
+      grand.newhire += c.newhire;
+      grand.separation += c.separation;
+      grand.maternity += c.maternity;
+      grand.nologs += c.nologs;
+      grand.pending += c.pending;
+    }
+    const cell = (v) => c ? v : '—';
+    return `
+      <tr class="dashboard-row" data-aff="${a.key}" style="cursor:pointer;">
+        <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${a.color};margin-right:9px;vertical-align:middle;"></span><span class="name-cell">${a.key}</span></td>
+        <td>${c ? c.period : 'No data yet'}</td>
+        <td style="font-weight:700;">${cell(c && c.total)}</td>
+        <td>${cell(c && c.active)}</td>
+        <td style="color:var(--st-newhire);font-weight:600;">${cell(c && c.newhire)}</td>
+        <td style="color:var(--st-separation);font-weight:600;">${cell(c && c.separation)}</td>
+        <td style="color:var(--st-maternity);font-weight:600;">${cell(c && c.maternity)}</td>
+        <td style="color:var(--st-nologs);font-weight:600;">${cell(c && c.nologs)}</td>
+        <td style="color:var(--aff);font-weight:700;">${cell(c && c.pending)}</td>
+      </tr>
+    `;
+  }).join('');
+
+  document.getElementById('statTotal').textContent = grand.total;
+  document.getElementById('statNewHire').textContent = grand.newhire;
+  document.getElementById('statSeparation').textContent = grand.separation;
+  document.getElementById('statMaternity').textContent = grand.maternity;
+  document.getElementById('statNoLogs').textContent = grand.nologs;
+  document.getElementById('statPending').textContent = grand.pending;
+
+  const summaryTable = document.createElement('table');
+  summaryTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>Affiliate</th>
+        <th>Latest Cut-off</th>
+        <th>Total HC</th>
+        <th>Active</th>
+        <th>New Hire</th>
+        <th>Separation</th>
+        <th>Maternity</th>
+        <th>No Logs</th>
+        <th>Logs Pending</th>
+      </tr>
+    </thead>
+    <tbody>${summaryRowsHtml}</tbody>
+  `;
+  summaryTable.querySelectorAll('.dashboard-row').forEach(tr => {
+    tr.addEventListener('click', () => {
+      currentAffiliate = tr.dataset.aff;
+      currentFilter = 'all';
+      searchTerm = '';
+      renderAll();
+    });
+  });
+
+  // Build the consolidated record list across every affiliate's latest cut-off
+  let combined = [];
+  AFFILIATES.forEach(a => {
+    const aff = store[a.key];
+    if(!aff.currentPeriod) return;
+    const rows = aff.workbookData[aff.currentPeriod] || [];
+    const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
+    rows.forEach(r => {
+      if(!stateForPeriod[r.idno]){
+        stateForPeriod[r.idno] = {status: guessStatus(r.remarksOriginal), logsChecked:false, remarks:r.remarksOriginal||''};
+      }
+      combined.push({affKey:a.key, affColor:a.color, period:aff.currentPeriod, row:r, state:stateForPeriod[r.idno]});
+    });
+  });
+
+  const filtered = combined.filter(item => {
+    if(searchTerm){
+      const hay = (item.row.lastname + ' ' + item.row.firstname + ' ' + item.row.idno + ' ' + item.affKey).toLowerCase();
+      if(!hay.includes(searchTerm.toLowerCase())) return false;
+    }
+    if(currentFilter === 'all') return true;
+    if(currentFilter === '__pending') return !item.state.logsChecked;
+    return item.state.status === currentFilter;
+  });
+
+  const recordsTable = document.createElement('table');
+  recordsTable.innerHTML = `
+    <thead>
+      <tr>
+        <th>Affiliate</th>
+        <th>ID No.</th>
+        <th>Name</th>
+        <th>Status</th>
+        <th>Remarks</th>
+        <th>Logs Checked</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = recordsTable.querySelector('tbody');
+
+  filtered.forEach(item => {
+    const { affKey, affColor, period, row, state } = item;
+    const tr = document.createElement('tr');
+    const statusClass = state.status === 'New Hire' ? 'status-newhire'
+      : state.status === 'Separation' ? 'status-separation'
+      : state.status === 'Maternity' ? 'status-maternity'
+      : state.status === 'No Logs' ? 'status-nologs' : '';
+    tr.className = statusClass;
+
+    const flaggedNew = isNewHireFlagged(affKey, period, row.idno);
+
+    tr.innerHTML = `
+      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${affColor};margin-right:8px;vertical-align:middle;"></span>${affKey}</td>
+      <td>${row.idno}</td>
+      <td class="name-cell">${row.lastname}, ${row.firstname} ${flaggedNew ? '<span class="newhire-badge">New this cut-off</span>' : ''}</td>
+      <td class="status-cell">
+        <select class="status-select">
+          ${STATUS_LIST.map(s => `<option value="${s}" ${s===state.status?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td><input type="text" class="remarks-input" value="${(state.remarks||'').replace(/"/g,'&quot;')}" placeholder="Add a note..."></td>
+      <td class="logs-cell"><button class="logs-toggle ${state.logsChecked?'checked':''}">${state.logsChecked ? 'Checked' : 'Pending'}</button></td>
+    `;
+
+    tr.querySelector('.status-select').addEventListener('change', function(e){
+      state.status = e.target.value;
+      store[affKey].trackerState[period][row.idno] = state;
+      saveAffiliate(affKey);
+      renderDashboardView();
+    });
+    tr.querySelector('.remarks-input').addEventListener('input', function(e){
+      state.remarks = e.target.value;
+      store[affKey].trackerState[period][row.idno] = state;
+      saveAffiliate(affKey);
+    });
+    tr.querySelector('.logs-toggle').addEventListener('click', function(){
+      state.logsChecked = !state.logsChecked;
+      store[affKey].trackerState[period][row.idno] = state;
+      saveAffiliate(affKey);
+      renderDashboardView();
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  const wrap = document.getElementById('tableWrap');
+  wrap.innerHTML = '';
+  const heading1 = document.createElement('div');
+  heading1.style.cssText = 'font-family:Playfair Display,serif;font-size:16px;font-weight:700;color:var(--text-hi);margin:4px 0 10px;';
+  heading1.textContent = 'Headcount by Status — All Affiliates';
+  wrap.appendChild(heading1);
+  wrap.appendChild(summaryTable);
+
+  const heading2 = document.createElement('div');
+  heading2.style.cssText = 'font-family:Playfair Display,serif;font-size:16px;font-weight:700;color:var(--text-hi);margin:26px 0 10px;';
+  heading2.textContent = `All Records — Every Affiliate (${filtered.length} of ${combined.length})`;
+  wrap.appendChild(heading2);
+  wrap.appendChild(recordsTable);
+
+  document.getElementById('footerNote').textContent =
+    `Click an affiliate row above to open its full tracker. Editing a record below saves directly to that affiliate's current cut-off.`;
+}
+
+function renderPeriodBar(){
+  const bar = document.getElementById('periodBar');
+  bar.innerHTML = '';
+  const aff = store[currentAffiliate];
+  aff.periodOrder.forEach(p => {
+    const chip = document.createElement('button');
+    chip.className = 'period-chip' + (p === aff.currentPeriod ? ' active' : '');
+    chip.textContent = p;
+    chip.addEventListener('click', () => { aff.currentPeriod = p; saveAffiliate(currentAffiliate); renderStatsAndTable(); renderPeriodBar(); });
+    bar.appendChild(chip);
+  });
+  const addChip = document.createElement('button');
+  addChip.className = 'period-chip add-new';
+  addChip.textContent = '+';
+  addChip.title = 'Add new cut-off';
+  addChip.addEventListener('click', () => addNewPeriod(currentAffiliate));
+  bar.appendChild(addChip);
+}
+
+function addNewPeriod(affKey){
+  const aff = store[affKey];
+  if(aff.periodOrder.length === 0){
+    alert(`Import at least one cut-off for ${affKey} first — then use "+" to add the next ones without re-uploading.`);
+    return;
+  }
+  const suggested = '';
+  const newName = prompt(`Name the new cut-off for ${affKey} (e.g. 070326-071626):`, suggested);
+  if(!newName) return;
+  const trimmed = newName.trim();
+  if(!trimmed) return;
+  if(aff.periodOrder.includes(trimmed)){
+    alert('That cut-off name already exists.');
+    return;
+  }
+  const lastPeriod = aff.periodOrder[aff.periodOrder.length-1];
+  const carriedRows = aff.workbookData[lastPeriod].map(r => ({
+    no: r.no, location: r.location, idno: r.idno, lastname: r.lastname, firstname: r.firstname, remarksOriginal: ''
+  }));
+  aff.workbookData[trimmed] = carriedRows;
+  aff.periodOrder.push(trimmed);
+  aff.trackerState[trimmed] = {};
+  carriedRows.forEach(r => {
+    aff.trackerState[trimmed][r.idno] = { status:'Active', logsChecked:false, remarks:'' };
+  });
+  aff.currentPeriod = trimmed;
+  saveAffiliate(affKey);
+  renderAll();
+}
+
+function addEmployeeRow(){
+  const aff = store[currentAffiliate];
+  if(!aff.currentPeriod){ alert('Add or import a cut-off first.'); return; }
+  const location = prompt('Location:', '') || '';
+  const idno = prompt('ID No.:', '');
+  if(!idno) return;
+  const idnoTrim = idno.trim();
+  const rows = aff.workbookData[aff.currentPeriod];
+  if(rows.some(r => r.idno === idnoTrim)){
+    alert('An employee with that ID No. already exists in this cut-off.');
+    return;
+  }
+  const lastname = prompt('Last Name:', '') || '';
+  const firstname = prompt('First Name:', '') || '';
+  const maxNo = rows.reduce((m,r) => Math.max(m, Number(r.no)||0), 0);
+  const newRow = { no:maxNo+1, location, idno:idnoTrim, lastname, firstname, remarksOriginal:'' };
+  rows.push(newRow);
+  aff.trackerState[aff.currentPeriod][idnoTrim] = { status:'New Hire', logsChecked:false, remarks:'' };
+  saveAffiliate(currentAffiliate);
+  renderStatsAndTable();
+}
+
+function deleteEmployeeRow(idno){
+  const aff = store[currentAffiliate];
+  if(!confirm('Remove this employee from this cut-off? This only affects this cut-off\'s list.')) return;
+  aff.workbookData[aff.currentPeriod] = aff.workbookData[aff.currentPeriod].filter(r => r.idno !== idno);
+  delete aff.trackerState[aff.currentPeriod][idno];
+  saveAffiliate(currentAffiliate);
+  renderStatsAndTable();
+}
+
+function isNewHireFlagged(affKey, periodName, idno){
+  const aff = store[affKey];
+  const idx = aff.periodOrder.indexOf(periodName);
+  if(idx <= 0) return false;
+  const prevPeriod = aff.periodOrder[idx-1];
+  const prevIds = new Set(aff.workbookData[prevPeriod].map(r=>r.idno));
+  return !prevIds.has(idno);
+}
+
+function renderStatsAndTable(){
+  const aff = store[currentAffiliate];
+  const hasData = aff.periodOrder.length > 0;
+  document.getElementById('statsRow').style.display = hasData ? 'grid' : 'none';
+  document.getElementById('toolbar').style.display = hasData ? 'flex' : 'none';
+
+  if(!hasData || !aff.currentPeriod){
+    document.getElementById('tableWrap').innerHTML = `<div class="empty-state"><h2>No cut-off loaded for ${currentAffiliate}</h2><div>Import ${currentAffiliate}'s cut-off workbook (.xlsx) to get started. Your tagging and logs-checked marks are saved automatically in this browser, per affiliate.</div></div>`;
+    document.getElementById('footerNote').textContent = '';
+    return;
+  }
+
+  const rows = aff.workbookData[aff.currentPeriod];
+  const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
+
+  let counts = {total: rows.length, newhire:0, separation:0, maternity:0, nologs:0, pending:0};
+  rows.forEach(r => {
+    const st = stateForPeriod[r.idno];
+    if(!st) return;
+    if(st.status === 'New Hire') counts.newhire++;
+    if(st.status === 'Separation') counts.separation++;
+    if(st.status === 'Maternity') counts.maternity++;
+    if(st.status === 'No Logs') counts.nologs++;
+    if(!st.logsChecked) counts.pending++;
+  });
+  document.getElementById('statTotal').textContent = counts.total;
+  document.getElementById('statNewHire').textContent = counts.newhire;
+  document.getElementById('statSeparation').textContent = counts.separation;
+  document.getElementById('statMaternity').textContent = counts.maternity;
+  document.getElementById('statNoLogs').textContent = counts.nologs;
+  document.getElementById('statPending').textContent = counts.pending;
+
+  let visibleRows = rows.filter(r => {
+    const st = stateForPeriod[r.idno] || {status:'Active', logsChecked:false, remarks:''};
+    if(searchTerm){
+      const hay = (r.lastname + ' ' + r.firstname + ' ' + r.idno).toLowerCase();
+      if(!hay.includes(searchTerm.toLowerCase())) return false;
+    }
+    if(currentFilter === 'all') return true;
+    if(currentFilter === '__pending') return !st.logsChecked;
+    return st.status === currentFilter;
+  });
+
+  const table = document.createElement('table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>No.</th>
+        <th>Location</th>
+        <th>ID No.</th>
+        <th>Name</th>
+        <th>Status</th>
+        <th>Remarks</th>
+        <th>Logs Checked</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+  const tbody = table.querySelector('tbody');
+
+  visibleRows.forEach(r => {
+    if(!stateForPeriod[r.idno]){
+      stateForPeriod[r.idno] = {status: guessStatus(r.remarksOriginal), logsChecked:false, remarks:r.remarksOriginal||''};
+    }
+    const st = stateForPeriod[r.idno];
+    const tr = document.createElement('tr');
+    const statusClass = st.status === 'New Hire' ? 'status-newhire'
+      : st.status === 'Separation' ? 'status-separation'
+      : st.status === 'Maternity' ? 'status-maternity'
+      : st.status === 'No Logs' ? 'status-nologs' : '';
+    tr.className = statusClass;
+
+    const flaggedNew = isNewHireFlagged(currentAffiliate, aff.currentPeriod, r.idno);
+
+    tr.innerHTML = `
+      <td>${r.no ?? ''}</td>
+      <td>${r.location || ''}</td>
+      <td>${r.idno}</td>
+      <td class="name-cell">${r.lastname}, ${r.firstname} ${flaggedNew ? '<span class="newhire-badge">New this cut-off</span>' : ''}</td>
+      <td class="status-cell">
+        <select class="status-select">
+          ${STATUS_LIST.map(s => `<option value="${s}" ${s===st.status?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+      <td><input type="text" class="remarks-input" value="${(st.remarks||'').replace(/"/g,'&quot;')}" placeholder="Add a note..."></td>
+      <td class="logs-cell"><button class="logs-toggle ${st.logsChecked?'checked':''}">${st.logsChecked ? 'Checked' : 'Pending'}</button></td>
+      <td style="text-align:center;"><button class="row-delete-btn" title="Remove from this cut-off" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>
+    `;
+
+    tr.querySelector('.status-select').addEventListener('change', function(e){
+      st.status = e.target.value;
+      stateForPeriod[r.idno] = st;
+      aff.trackerState[aff.currentPeriod] = stateForPeriod;
+      saveAffiliate(currentAffiliate);
+      renderStatsAndTable();
+    });
+    tr.querySelector('.remarks-input').addEventListener('input', function(e){
+      st.remarks = e.target.value;
+      stateForPeriod[r.idno] = st;
+      aff.trackerState[aff.currentPeriod] = stateForPeriod;
+      saveAffiliate(currentAffiliate);
+    });
+    tr.querySelector('.logs-toggle').addEventListener('click', function(){
+      st.logsChecked = !st.logsChecked;
+      stateForPeriod[r.idno] = st;
+      aff.trackerState[aff.currentPeriod] = stateForPeriod;
+      saveAffiliate(currentAffiliate);
+      renderStatsAndTable();
+    });
+    tr.querySelector('.row-delete-btn').addEventListener('click', function(){
+      deleteEmployeeRow(r.idno);
+    });
+
+    tbody.appendChild(tr);
+  });
+
+  const wrap = document.getElementById('tableWrap');
+  wrap.innerHTML = '';
+  wrap.appendChild(table);
+
+  document.getElementById('footerNote').textContent =
+    `${currentAffiliate} — ${aff.currentPeriod} — ${visibleRows.length} of ${rows.length} shown. Data auto-saves in this browser, per affiliate.`;
+}
+
+function renderCurrentView(){
+  if(currentAffiliate === DASHBOARD_KEY) renderDashboardView();
+  else renderStatsAndTable();
+}
+
+document.getElementById('searchBox').addEventListener('input', function(e){
+  searchTerm = e.target.value;
+  renderCurrentView();
+});
+
+document.getElementById('addEmployeeBtn').addEventListener('click', addEmployeeRow);
+
+document.getElementById('filterPills').addEventListener('click', function(e){
+  if(e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  e.target.classList.add('active');
+  currentFilter = e.target.dataset.filter;
+  renderCurrentView();
+});
+
+document.getElementById('exportBtn').addEventListener('click', function(){
+  if(currentAffiliate === DASHBOARD_KEY){ alert('Select an affiliate tab to export its cut-off data.'); return; }
+  const aff = store[currentAffiliate];
+  if(!aff.currentPeriod){ alert(`Import a workbook for ${currentAffiliate} first.`); return; }
+  const rows = aff.workbookData[aff.currentPeriod];
+  const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
+  let csv = 'NO,LOCATION,IDNO,LASTNAME,FIRSTNAME,STATUS,REMARKS,LOGS CHECKED\n';
+  rows.forEach(r => {
+    const st = stateForPeriod[r.idno] || {status:'Active', logsChecked:false, remarks:''};
+    const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+    csv += [r.no, r.location, r.idno, r.lastname, r.firstname, st.status, st.remarks, st.logsChecked ? 'Yes':'No'].map(esc).join(',') + '\n';
+  });
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${currentAffiliate}_${aff.currentPeriod}_tracker.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+(async function init(){
+  await loadFromStorage();
+  renderAll();
+})();
+</script>
+
+</body>
+</html>
