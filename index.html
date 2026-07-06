@@ -454,7 +454,14 @@
 </div>
 
 <div class="footer-note" id="footerNote"></div>
-<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.3 — purple + year filter</div>
+<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.4 — make-up schedule</div>
+
+<div id="pickModal" style="display:none;position:fixed;inset:0;background:rgba(42,32,24,0.45);z-index:50;align-items:center;justify-content:center;">
+  <div style="background:var(--navy-900);border:1px solid var(--navy-600);border-radius:12px;max-width:560px;width:92%;padding:24px 28px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(42,32,24,0.25);">
+    <h2 style="font-family:'Playfair Display',serif;font-size:20px;margin:0 0 8px;color:var(--text-hi);">Add from Cut-off List</h2>
+    <div id="pickModalBody" style="font-size:13.5px;color:var(--text-mid);"></div>
+  </div>
+</div>
 
 <div id="syncModal" style="display:none;position:fixed;inset:0;background:rgba(42,32,24,0.45);z-index:50;align-items:center;justify-content:center;">
   <div style="background:var(--navy-900);border:1px solid var(--navy-600);border-radius:12px;max-width:620px;width:92%;padding:26px 30px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(42,32,24,0.25);">
@@ -476,7 +483,28 @@ const AFFILIATES = [
 ];
 
 const DASHBOARD_KEY = '__dashboard__';
+const MAKEUP_KEY = '__makeup__';
 let currentAffiliate = DASHBOARD_KEY;
+let makeupAffiliate = 'PHI';
+
+// Default December make-up sessions (editable in the UI): each make-up
+// day covers one earlier missed date.
+const DEFAULT_MAKEUP_DATES = [
+  {makeup:'December 18, 2026', covers:'August 01, 2026'},
+  {makeup:'December 21, 2026', covers:'August 15, 2026'},
+  {makeup:'December 22, 2026', covers:'September 05, 2026'},
+  {makeup:'December 23, 2026', covers:'September 19, 2026'},
+  {makeup:'December 28, 2026', covers:'October 03, 2026'},
+  {makeup:'December 29, 2026', covers:'October 17, 2026'}
+];
+
+function getMakeup(affKey){
+  const aff = store[affKey];
+  if(!aff.makeup || !Array.isArray(aff.makeup.dates) || !Array.isArray(aff.makeup.rows)){
+    aff.makeup = { dates: DEFAULT_MAKEUP_DATES.map(d => ({...d})), rows: [] };
+  }
+  return aff.makeup;
+}
 
 // Per-affiliate in-memory state, hydrated from the storage backend (Claude artifact storage when available, otherwise this browser's localStorage)
 let store = {};
@@ -527,7 +555,8 @@ async function loadFromStorage(){
           workbookData: parsed.workbookData || {},
           periodOrder: parsed.periodOrder || [],
           trackerState: parsed.trackerState || {},
-          currentPeriod: parsed.currentPeriod || null
+          currentPeriod: parsed.currentPeriod || null,
+          makeup: parsed.makeup || null
         };
       }
     }catch(e){
@@ -633,7 +662,8 @@ async function pullFromCloud(){
         workbookData: remote.data.workbookData || {},
         periodOrder: remote.data.periodOrder || [],
         trackerState: remote.data.trackerState || {},
-        currentPeriod: remote.data.currentPeriod || null
+        currentPeriod: remote.data.currentPeriod || null,
+        makeup: remote.data.makeup || null
       };
       metaUpdatedAt[a.key] = remote.updatedAt || 0;
       try{
@@ -829,6 +859,9 @@ document.getElementById('syncBtn').addEventListener('click', openSyncModal);
 document.getElementById('syncModal').addEventListener('click', function(e){
   if(e.target === this) closeSyncModal();
 });
+document.getElementById('pickModal').addEventListener('click', function(e){
+  if(e.target === this) closePickModal();
+});
 
 // Pick up edits made on other devices when returning to this tab, plus a gentle background check.
 window.addEventListener('focus', checkForRemoteChanges);
@@ -932,13 +965,17 @@ function dashboardFilterLabel(f){
 }
 
 function currentAffColor(){
+  if(currentAffiliate === MAKEUP_KEY) return '#1f7a4c';
   const found = AFFILIATES.find(a => a.key === currentAffiliate);
   return found ? found.color : '#6d3fb8';
 }
 
 function applyAffiliateTheme(){
   document.documentElement.style.setProperty('--aff', currentAffColor());
-  document.getElementById('pageTitle').textContent = currentAffiliate === DASHBOARD_KEY ? 'Main Dashboard' : 'Cut-off Tracker';
+  document.getElementById('pageTitle').textContent =
+    currentAffiliate === DASHBOARD_KEY ? 'Main Dashboard'
+    : currentAffiliate === MAKEUP_KEY ? 'December Make-up Schedule'
+    : 'Cut-off Tracker';
 }
 
 /* ---------- Year consolidation for the dashboard ----------
@@ -1029,6 +1066,7 @@ function renderYearBar(years){
 
 document.getElementById('importBtn').addEventListener('click', () => {
   if(currentAffiliate === DASHBOARD_KEY){ alert('Select an affiliate tab first, then import that affiliate\'s workbook.'); return; }
+  if(currentAffiliate === MAKEUP_KEY){ alert('The make-up schedule has its own buttons — use "Add from Cut-off List" or "+ Add Employee". To import a cut-off workbook, switch to an affiliate tab.'); return; }
   document.getElementById('fileInput').click();
 });
 
@@ -1120,6 +1158,10 @@ function renderAll(){
     document.getElementById('periodBar').innerHTML = '';
     document.getElementById('toolbar').style.display = 'none';
     renderDashboardView();
+  } else if(currentAffiliate === MAKEUP_KEY){
+    document.getElementById('toolbar').style.display = 'none';
+    document.getElementById('statsRow').style.display = 'none';
+    renderMakeupView();
   } else {
     document.getElementById('addEmployeeBtn').style.display = 'inline-block';
     renderPeriodBar();
@@ -1141,6 +1183,17 @@ function renderAffiliateBar(){
     renderAll();
   });
   bar.appendChild(dashTab);
+
+  const muTab = document.createElement('button');
+  muTab.className = 'affiliate-tab' + (currentAffiliate === MAKEUP_KEY ? ' active' : '');
+  muTab.style.setProperty('--dotcolor', '#1f7a4c');
+  muTab.style.setProperty('--tabcolor', '#1f7a4c');
+  muTab.innerHTML = `<span class="dot"></span>Dec Make-up`;
+  muTab.addEventListener('click', () => {
+    currentAffiliate = MAKEUP_KEY;
+    renderAll();
+  });
+  bar.appendChild(muTab);
 
   AFFILIATES.forEach(a => {
     const tab = document.createElement('button');
@@ -1334,6 +1387,177 @@ function renderDashboardView(){
   document.getElementById('footerNote').textContent = dashboardFilter !== null
     ? `Click a row to open that employee's affiliate tracker, filtered to ${dashboardFilterLabel(dashboardFilter)}.`
     : `Click a number tile or an affiliate card to see the people behind it.`;
+}
+
+/* ---------- December Make-up Schedule ---------- */
+function renderMakeupView(){
+  const bar = document.getElementById('periodBar');
+  bar.innerHTML = '';
+  AFFILIATES.forEach(a => {
+    const chip = document.createElement('button');
+    chip.className = 'period-chip' + (a.key === makeupAffiliate ? ' active' : '');
+    chip.textContent = a.key;
+    chip.addEventListener('click', () => { makeupAffiliate = a.key; renderMakeupView(); });
+    bar.appendChild(chip);
+  });
+
+  const mu = getMakeup(makeupAffiliate);
+  const wrap = document.getElementById('tableWrap');
+  wrap.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:4px 0 12px;';
+  head.innerHTML = `
+    <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--text-hi);">December Make-up Schedule — ${makeupAffiliate}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-gold" id="muAddFromCutoffBtn">Add from Cut-off List</button>
+      <button class="btn" id="muAddEmployeeBtn">+ Add Employee</button>
+      <button class="btn" id="muAddDateBtn">+ Add Date</button>
+    </div>`;
+  wrap.appendChild(head);
+
+  const scroller = document.createElement('div');
+  scroller.style.cssText = 'overflow-x:auto;';
+  const table = document.createElement('table');
+  const dateHeads = mu.dates.map((d, i) => `
+    <th style="text-align:center;min-width:130px;">
+      <div style="color:var(--st-newhire);font-size:11px;white-space:nowrap;">${d.makeup}</div>
+      <div style="color:var(--text-dim);font-weight:500;font-size:10px;text-transform:none;letter-spacing:0;white-space:nowrap;">covers ${d.covers} <button class="mu-del-date" data-i="${i}" title="Remove this date column" style="background:none;border:none;color:var(--st-separation);cursor:pointer;font-size:12px;">×</button></div>
+    </th>`).join('');
+  table.innerHTML = `
+    <thead><tr>
+      <th>No.</th><th>ID No.</th><th>Last Name</th><th>First Name</th><th>Date Hired</th>
+      ${dateHeads}
+      <th></th>
+    </tr></thead><tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+
+  mu.rows.forEach((row, ri) => {
+    const tr = document.createElement('tr');
+    const cells = mu.dates.map(d => {
+      const on = !!(row.present && row.present[d.makeup]);
+      return `<td style="text-align:center;"><button class="logs-toggle mu-present ${on ? 'checked' : ''}" data-key="${d.makeup.replace(/"/g,'&quot;')}" style="width:auto;padding:6px 10px;">${on ? '✓ Present' : '—'}</button></td>`;
+    }).join('');
+    tr.innerHTML = `
+      <td>${ri + 1}</td>
+      <td>${row.idno}</td>
+      <td class="name-cell">${row.lastname}</td>
+      <td class="name-cell">${row.firstname}</td>
+      <td>${row.dateHired || ''}</td>
+      ${cells}
+      <td style="text-align:center;"><button class="mu-del-row" title="Remove employee from make-up list" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>`;
+    tr.querySelectorAll('.mu-present').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.dataset.key;
+        row.present = row.present || {};
+        row.present[key] = !row.present[key];
+        saveAffiliate(makeupAffiliate);
+        renderMakeupView();
+      });
+    });
+    tr.querySelector('.mu-del-row').addEventListener('click', () => {
+      if(!confirm(`Remove ${row.lastname}, ${row.firstname} from the make-up list?`)) return;
+      mu.rows.splice(ri, 1);
+      saveAffiliate(makeupAffiliate);
+      renderMakeupView();
+    });
+    tbody.appendChild(tr);
+  });
+
+  if(mu.rows.length === 0){
+    const empty = document.createElement('tr');
+    empty.innerHTML = `<td colspan="${6 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
+    tbody.appendChild(empty);
+  }
+
+  table.querySelectorAll('.mu-del-date').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const i = parseInt(btn.dataset.i, 10);
+      const d = mu.dates[i];
+      if(!confirm(`Remove the "${d.makeup}" column? Its check marks will be lost.`)) return;
+      mu.dates.splice(i, 1);
+      saveAffiliate(makeupAffiliate);
+      renderMakeupView();
+    });
+  });
+
+  scroller.appendChild(table);
+  wrap.appendChild(scroller);
+
+  document.getElementById('muAddEmployeeBtn').addEventListener('click', muAddEmployee);
+  document.getElementById('muAddDateBtn').addEventListener('click', muAddDate);
+  document.getElementById('muAddFromCutoffBtn').addEventListener('click', muOpenPicker);
+
+  document.getElementById('footerNote').textContent =
+    `${makeupAffiliate} make-up schedule — ${mu.rows.length} employee${mu.rows.length === 1 ? '' : 's'}. Click a date cell to mark Present. Saves and syncs automatically.`;
+}
+
+function muAddEmployee(){
+  const mu = getMakeup(makeupAffiliate);
+  const idno = prompt('ID No.:', '');
+  if(!idno) return;
+  const idnoTrim = idno.trim();
+  if(mu.rows.some(r => r.idno === idnoTrim)){ alert('That ID No. is already on the make-up list.'); return; }
+  const lastname = prompt('Last Name:', '') || '';
+  const firstname = prompt('First Name:', '') || '';
+  const dateHired = prompt('Date Hired (optional):', '') || '';
+  mu.rows.push({idno: idnoTrim, lastname: lastname.trim(), firstname: firstname.trim(), dateHired: dateHired.trim(), present: {}});
+  saveAffiliate(makeupAffiliate);
+  renderMakeupView();
+}
+
+function muAddDate(){
+  const mu = getMakeup(makeupAffiliate);
+  const makeup = prompt('Make-up date (e.g. December 30, 2026):', '');
+  if(!makeup) return;
+  const covers = prompt('Which missed date does it cover? (e.g. November 07, 2026):', '') || '';
+  mu.dates.push({makeup: makeup.trim(), covers: covers.trim()});
+  saveAffiliate(makeupAffiliate);
+  renderMakeupView();
+}
+
+function muOpenPicker(){
+  const aff = store[makeupAffiliate];
+  const mu = getMakeup(makeupAffiliate);
+  if(!aff.currentPeriod){
+    alert(`No cut-off imported for ${makeupAffiliate} yet — import its workbook first (on the ${makeupAffiliate} tab), or use "+ Add Employee" to type names in.`);
+    return;
+  }
+  const existing = new Set(mu.rows.map(r => r.idno));
+  const candidates = (aff.workbookData[aff.currentPeriod] || []).filter(r => !existing.has(r.idno));
+  const body = document.getElementById('pickModalBody');
+  body.innerHTML = `
+    <p style="margin:0 0 10px;">Tick who joins ${makeupAffiliate}'s make-up schedule (names from cut-off <b>${aff.currentPeriod}</b>):</p>
+    <input type="text" id="muPickSearch" placeholder="Type to filter names..." style="width:100%;margin-bottom:8px;padding:8px 12px;border:1px solid var(--navy-600);border-radius:7px;background:var(--navy-800);color:var(--text-hi);font-size:13px;font-family:'Inter',sans-serif;">
+    <div style="max-height:300px;overflow-y:auto;border:1px solid var(--navy-700);border-radius:8px;padding:6px 12px;">
+      ${candidates.length ? candidates.map((r, i) => `<label class="mu-pick-label" style="display:block;padding:5px 2px;font-size:13px;color:var(--text-mid);cursor:pointer;"><input type="checkbox" class="mu-pick" data-i="${i}" style="margin-right:8px;">${r.lastname}, ${r.firstname} <span style="color:var(--text-dim);font-size:11.5px;">(${r.idno})</span></label>`).join('')
+        : '<div style="color:var(--text-dim);padding:10px;">Everyone from this cut-off is already on the make-up list.</div>'}
+    </div>
+    <div style="display:flex;gap:10px;margin-top:14px;">
+      <button class="btn btn-gold" id="muPickAddBtn">Add Selected</button>
+      <button class="btn" id="muPickCancelBtn">Cancel</button>
+    </div>`;
+  document.getElementById('muPickSearch').addEventListener('input', function(){
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('.mu-pick-label').forEach(l => {
+      l.style.display = l.textContent.toLowerCase().includes(q) ? 'block' : 'none';
+    });
+  });
+  document.getElementById('muPickAddBtn').addEventListener('click', () => {
+    const picked = [...document.querySelectorAll('.mu-pick:checked')].map(cb => candidates[parseInt(cb.dataset.i, 10)]);
+    picked.forEach(r => mu.rows.push({idno: r.idno, lastname: r.lastname, firstname: r.firstname, dateHired: '', present: {}}));
+    if(picked.length) saveAffiliate(makeupAffiliate);
+    closePickModal();
+    renderMakeupView();
+  });
+  document.getElementById('muPickCancelBtn').addEventListener('click', closePickModal);
+  document.getElementById('pickModal').style.display = 'flex';
+  document.getElementById('muPickSearch').focus();
+}
+
+function closePickModal(){
+  document.getElementById('pickModal').style.display = 'none';
 }
 
 function renderPeriodBar(){
@@ -1556,6 +1780,7 @@ function renderStatsAndTable(){
 
 function renderCurrentView(){
   if(currentAffiliate === DASHBOARD_KEY) renderDashboardView();
+  else if(currentAffiliate === MAKEUP_KEY) renderMakeupView();
   else renderStatsAndTable();
 }
 
@@ -1587,6 +1812,25 @@ document.getElementById('statsRow').addEventListener('click', function(e){
 });
 
 document.getElementById('exportBtn').addEventListener('click', function(){
+  if(currentAffiliate === MAKEUP_KEY){
+    const mu = getMakeup(makeupAffiliate);
+    const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+    let csv = ['NO','IDNO','LASTNAME','FIRSTNAME','DATE HIRED']
+      .concat(mu.dates.map(d => `${d.makeup} (covers ${d.covers})`)).map(esc).join(',') + '\n';
+    mu.rows.forEach((row, i) => {
+      csv += [i+1, row.idno, row.lastname, row.firstname, row.dateHired || '']
+        .concat(mu.dates.map(d => (row.present && row.present[d.makeup]) ? 'Present' : ''))
+        .map(esc).join(',') + '\n';
+    });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${makeupAffiliate}_december_makeup_schedule.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
   if(currentAffiliate === DASHBOARD_KEY){ alert('Select an affiliate tab to export its cut-off data.'); return; }
   const aff = store[currentAffiliate];
   if(!aff.currentPeriod){ alert(`Import a workbook for ${currentAffiliate} first.`); return; }
