@@ -454,7 +454,7 @@
 </div>
 
 <div class="footer-note" id="footerNote"></div>
-<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.5 — make-up schedule</div>
+<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.6 — make-up checkboxes</div>
 
 <div id="pickModal" style="display:none;position:fixed;inset:0;background:rgba(42,32,24,0.45);z-index:50;align-items:center;justify-content:center;">
   <div style="background:var(--navy-900);border:1px solid var(--navy-600);border-radius:12px;max-width:560px;width:92%;padding:24px 28px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(42,32,24,0.25);">
@@ -1436,7 +1436,7 @@ function renderMakeupView(){
     const tr = document.createElement('tr');
     const cells = mu.dates.map(d => {
       const on = !!(row.present && row.present[d.makeup]);
-      return `<td style="text-align:center;"><button class="logs-toggle mu-present ${on ? 'checked' : ''}" data-key="${d.makeup.replace(/"/g,'&quot;')}" style="width:auto;padding:6px 12px;white-space:nowrap;">${on ? '&#10003; Present' : 'Mark present'}</button></td>`;
+      return `<td style="text-align:center;"><input type="checkbox" class="mu-present" data-key="${d.makeup.replace(/"/g,'&quot;')}" ${on ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;"></td>`;
     }).join('');
     tr.innerHTML = `
       <td>${ri + 1}</td>
@@ -1446,13 +1446,12 @@ function renderMakeupView(){
       <td>${row.dateHired || ''}</td>
       ${cells}
       <td style="text-align:center;"><button class="mu-del-row" title="Remove employee from make-up list" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>`;
-    tr.querySelectorAll('.mu-present').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const key = btn.dataset.key;
+    tr.querySelectorAll('.mu-present').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const key = cb.dataset.key;
         row.present = row.present || {};
-        row.present[key] = !row.present[key];
+        row.present[key] = cb.checked;
         saveAffiliate(makeupAffiliate);
-        renderMakeupView();
       });
     });
     tr.querySelector('.mu-del-row').addEventListener('click', () => {
