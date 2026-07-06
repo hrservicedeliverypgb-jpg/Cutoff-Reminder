@@ -454,7 +454,7 @@
 </div>
 
 <div class="footer-note" id="footerNote"></div>
-<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.2 — purple</div>
+<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.3 — purple + year filter</div>
 
 <div id="syncModal" style="display:none;position:fixed;inset:0;background:rgba(42,32,24,0.45);z-index:50;align-items:center;justify-content:center;">
   <div style="background:var(--navy-900);border:1px solid var(--navy-600);border-radius:12px;max-width:620px;width:92%;padding:26px 30px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(42,32,24,0.25);">
@@ -484,6 +484,7 @@ AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], tracke
 
 let currentFilter = 'all';
 let dashboardFilter = null;   // status drill-down open on the Main Dashboard
+let dashboardYear = null;     // year selected on the Main Dashboard (number or 'all')
 let searchTerm = '';
 let syncStatus = 'idle'; // idle | syncing | error
 
@@ -940,24 +941,90 @@ function applyAffiliateTheme(){
   document.getElementById('pageTitle').textContent = currentAffiliate === DASHBOARD_KEY ? 'Main Dashboard' : 'Cut-off Tracker';
 }
 
-function getAffiliateCounts(affKey){
+/* ---------- Year consolidation for the dashboard ----------
+   Cut-off names look like "061826-070126" (MMDDYY). The year is read
+   from the first date; names containing a 4-digit year like "2026"
+   also work. */
+function periodYear(p){
+  const s = String(p);
+  const m6 = s.match(/(\d{2})(\d{2})(\d{2})/);
+  if(m6) return 2000 + parseInt(m6[3], 10);
+  const m4 = s.match(/20(\d{2})/);
+  if(m4) return 2000 + parseInt(m4[1], 10);
+  return null;
+}
+
+function getYearsAvailable(){
+  const ys = new Set();
+  AFFILIATES.forEach(a => store[a.key].periodOrder.forEach(p => {
+    const y = periodYear(p);
+    if(y) ys.add(y);
+  }));
+  return [...ys].sort((a, b) => b - a);
+}
+
+// Consolidated stats for one affiliate over all cut-offs in `year`
+// ('all' = every cut-off). Statuses count each employee once (their
+// latest occurrence in the year); Logs Pending counts every unchecked
+// entry; Total/Active reflect the newest cut-off in the year.
+function getAffiliateYearStats(affKey, year){
   const aff = store[affKey];
-  if(!aff.currentPeriod) return null;
-  const rows = aff.workbookData[aff.currentPeriod];
-  const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
-  const counts = {period: aff.currentPeriod, total: rows.length, active:0, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
-  rows.forEach(r => {
-    const st = stateForPeriod[r.idno];
-    if(!st) return;
-    if(st.status === 'Active') counts.active++;
-    if(st.status === 'New Hire') counts.newhire++;
-    if(st.status === 'Separation') counts.separation++;
-    if(st.status === 'Maternity') counts.maternity++;
-    if(st.status === 'Transfer') counts.transfer++;
-    if(st.status === 'No Logs') counts.nologs++;
-    if(!st.logsChecked) counts.pending++;
+  const periods = aff.periodOrder.filter(p => year === 'all' || periodYear(p) === year);
+  if(periods.length === 0) return null;
+  const latest = periods[periods.length - 1];
+  const latestRows = aff.workbookData[latest] || [];
+  const latestState = aff.trackerState[latest] || {};
+
+  const statusMaps = { 'New Hire':new Map(), 'Separation':new Map(), 'Maternity':new Map(), 'Transfer':new Map(), 'No Logs':new Map() };
+  const pendingEntries = [];
+  periods.forEach(p => {
+    const stateForPeriod = aff.trackerState[p] || {};
+    (aff.workbookData[p] || []).forEach(r => {
+      const st = stateForPeriod[r.idno];
+      if(!st) return;
+      if(statusMaps[st.status]) statusMaps[st.status].set(r.idno, {r, st, period: p});
+      if(!st.logsChecked) pendingEntries.push({r, st, period: p});
+    });
   });
-  return counts;
+
+  let active = 0;
+  latestRows.forEach(r => {
+    const st = latestState[r.idno];
+    if(st && st.status === 'Active') active++;
+  });
+
+  return {
+    periods, latest, latestRows, latestState, statusMaps, pendingEntries,
+    counts: {
+      total: latestRows.length,
+      active,
+      newhire: statusMaps['New Hire'].size,
+      separation: statusMaps['Separation'].size,
+      maternity: statusMaps['Maternity'].size,
+      transfer: statusMaps['Transfer'].size,
+      nologs: statusMaps['No Logs'].size,
+      pending: pendingEntries.length
+    }
+  };
+}
+
+function renderYearBar(years){
+  const bar = document.getElementById('periodBar');
+  bar.innerHTML = '';
+  if(years.length === 0) return;
+  const lbl = document.createElement('span');
+  lbl.style.cssText = 'font-size:12px;color:var(--text-dim);align-self:center;font-weight:700;margin-right:4px;';
+  lbl.textContent = 'Year:';
+  bar.appendChild(lbl);
+  const mk = (label, val) => {
+    const chip = document.createElement('button');
+    chip.className = 'period-chip' + (dashboardYear === val ? ' active' : '');
+    chip.textContent = label;
+    chip.addEventListener('click', () => { dashboardYear = val; renderDashboardView(); });
+    bar.appendChild(chip);
+  };
+  mk('All Years', 'all');
+  years.forEach(y => mk(String(y), y));
 }
 
 document.getElementById('importBtn').addEventListener('click', () => {
@@ -1098,43 +1165,52 @@ function renderAffiliateBar(){
 function renderDashboardView(){
   document.getElementById('statsRow').style.display = 'grid';
 
+  const years = getYearsAvailable();
+  if(dashboardYear === null) dashboardYear = years.length ? years[0] : 'all';
+  if(dashboardYear !== 'all' && !years.includes(dashboardYear)) dashboardYear = years.length ? years[0] : 'all';
+  renderYearBar(years);
+  const yearLabel = dashboardYear === 'all' ? 'All Years' : String(dashboardYear);
+
   let grand = {total:0, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
+  const statsByAff = {};
 
   const cardsWrap = document.createElement('div');
   cardsWrap.className = 'aff-cards';
 
   AFFILIATES.forEach(a => {
-    const c = getAffiliateCounts(a.key);
-    if(c){
-      grand.total += c.total;
-      grand.newhire += c.newhire;
-      grand.separation += c.separation;
-      grand.maternity += c.maternity;
-      grand.transfer += c.transfer;
-      grand.nologs += c.nologs;
-      grand.pending += c.pending;
+    const s = getAffiliateYearStats(a.key, dashboardYear);
+    statsByAff[a.key] = s;
+    if(s){
+      grand.total += s.counts.total;
+      grand.newhire += s.counts.newhire;
+      grand.separation += s.counts.separation;
+      grand.maternity += s.counts.maternity;
+      grand.transfer += s.counts.transfer;
+      grand.nologs += s.counts.nologs;
+      grand.pending += s.counts.pending;
     }
     const card = document.createElement('div');
     card.className = 'aff-card';
     card.style.setProperty('--acc', a.color);
-    if(c){
+    if(s){
+      const c = s.counts;
       card.innerHTML = `
         <div class="aff-card-name"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${a.color};margin-right:8px;"></span>${a.key}</div>
-        <div class="aff-card-period">${c.period}</div>
-        <div class="aff-card-row" data-filter="all" title="Show everyone"><span>Total Staff</span><b style="color:var(--text-hi);">${c.total}</b></div>
+        <div class="aff-card-period">${yearLabel} · ${s.periods.length} cut-off${s.periods.length > 1 ? 's' : ''} · latest: ${s.latest}</div>
+        <div class="aff-card-row" data-filter="all" title="Show latest cut-off staff"><span>Total Staff</span><b style="color:var(--text-hi);">${c.total}</b></div>
         <div class="aff-card-row" data-filter="Active" title="Show only Active"><span>Active</span><b style="color:var(--text-mid);">${c.active}</b></div>
-        <div class="aff-card-row" data-filter="New Hire" title="Show only New Hire"><span>New Hire</span><b style="color:var(--st-newhire);">${c.newhire}</b></div>
-        <div class="aff-card-row" data-filter="Separation" title="Show only Separation"><span>Separation</span><b style="color:var(--st-separation);">${c.separation}</b></div>
-        <div class="aff-card-row" data-filter="Maternity" title="Show only Maternity"><span>Maternity</span><b style="color:var(--st-maternity);">${c.maternity}</b></div>
-        <div class="aff-card-row" data-filter="Transfer" title="Show only Transfer"><span>Transfer</span><b style="color:var(--st-transfer);">${c.transfer}</b></div>
-        <div class="aff-card-row" data-filter="No Logs" title="Show only No Logs"><span>No Logs</span><b style="color:var(--st-nologs);">${c.nologs}</b></div>
-        <div class="aff-card-row" data-filter="__pending" title="Show only Logs Pending"><span>Logs Pending</span><b style="color:${a.color};">${c.pending}</b></div>
+        <div class="aff-card-row" data-filter="New Hire" title="New Hires across ${yearLabel}"><span>New Hire</span><b style="color:var(--st-newhire);">${c.newhire}</b></div>
+        <div class="aff-card-row" data-filter="Separation" title="Separations across ${yearLabel}"><span>Separation</span><b style="color:var(--st-separation);">${c.separation}</b></div>
+        <div class="aff-card-row" data-filter="Maternity" title="Maternity across ${yearLabel}"><span>Maternity</span><b style="color:var(--st-maternity);">${c.maternity}</b></div>
+        <div class="aff-card-row" data-filter="Transfer" title="Transfers across ${yearLabel}"><span>Transfer</span><b style="color:var(--st-transfer);">${c.transfer}</b></div>
+        <div class="aff-card-row" data-filter="No Logs" title="No Logs across ${yearLabel}"><span>No Logs</span><b style="color:var(--st-nologs);">${c.nologs}</b></div>
+        <div class="aff-card-row" data-filter="__pending" title="Unchecked log entries across ${yearLabel}"><span>Logs Pending</span><b style="color:${a.color};">${c.pending}</b></div>
         <div class="aff-card-open">Open tracker →</div>
       `;
     } else {
       card.innerHTML = `
         <div class="aff-card-name"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${a.color};margin-right:8px;"></span>${a.key}</div>
-        <div class="aff-card-period">No data yet</div>
+        <div class="aff-card-period">No cut-offs in ${yearLabel}</div>
         <div style="font-size:12.5px;color:var(--text-dim);padding:8px 0 12px;">Import this affiliate's cut-off workbook to see its headcount here.</div>
         <div class="aff-card-open">Open tracker →</div>
       `;
@@ -1165,30 +1241,39 @@ function renderDashboardView(){
   wrap.innerHTML = '';
   const heading1 = document.createElement('div');
   heading1.style.cssText = 'font-family:Playfair Display,serif;font-size:16px;font-weight:700;color:var(--text-hi);margin:4px 0 12px;';
-  heading1.textContent = 'Headcount by Status — All Affiliates';
+  heading1.textContent = `Headcount by Status — All Affiliates (${yearLabel})`;
   wrap.appendChild(heading1);
   wrap.appendChild(cardsWrap);
 
-  // Drill-down list: opened by clicking one of the stat tiles up top
+  // Drill-down list: opened by clicking one of the stat tiles up top.
+  // Statuses list each employee once (latest occurrence in the year);
+  // Logs Pending lists every unchecked entry per cut-off.
   if(dashboardFilter !== null){
     const matches = [];
     AFFILIATES.forEach(a => {
-      const aff = store[a.key];
-      if(!aff.currentPeriod) return;
-      const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
-      (aff.workbookData[aff.currentPeriod] || []).forEach(r => {
-        const st = stateForPeriod[r.idno] || {status:'Active', logsChecked:false, remarks:''};
-        const match = dashboardFilter === 'all' ? true
-          : dashboardFilter === '__pending' ? !st.logsChecked
-          : st.status === dashboardFilter;
-        if(match) matches.push({a, r, st});
-      });
+      const s = statsByAff[a.key];
+      if(!s) return;
+      if(dashboardFilter === 'all'){
+        s.latestRows.forEach(r => {
+          const st = s.latestState[r.idno] || {status:'Active', logsChecked:false, remarks:''};
+          matches.push({a, r, st, period: s.latest});
+        });
+      } else if(dashboardFilter === '__pending'){
+        s.pendingEntries.forEach(e => matches.push({a, r: e.r, st: e.st, period: e.period}));
+      } else if(dashboardFilter === 'Active'){
+        s.latestRows.forEach(r => {
+          const st = s.latestState[r.idno];
+          if(st && st.status === 'Active') matches.push({a, r, st, period: s.latest});
+        });
+      } else if(s.statusMaps[dashboardFilter]){
+        s.statusMaps[dashboardFilter].forEach(e => matches.push({a, r: e.r, st: e.st, period: e.period}));
+      }
     });
 
     const headRow = document.createElement('div');
     headRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:26px 0 10px;';
     headRow.innerHTML = `
-      <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--text-hi);">${dashboardFilterLabel(dashboardFilter)} — All Affiliates (${matches.length})</div>
+      <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--text-hi);">${dashboardFilterLabel(dashboardFilter)} — All Affiliates, ${yearLabel} (${matches.length})</div>
       <button class="btn" id="closeDrilldownBtn" style="padding:6px 12px;font-size:12px;">✕ Close</button>
     `;
     wrap.appendChild(headRow);
@@ -1198,6 +1283,7 @@ function renderDashboardView(){
       <thead>
         <tr>
           <th>Affiliate</th>
+          <th>Cut-off</th>
           <th>ID No.</th>
           <th>Name</th>
           <th>Location</th>
@@ -1209,7 +1295,7 @@ function renderDashboardView(){
       <tbody></tbody>
     `;
     const tbody = listTable.querySelector('tbody');
-    matches.forEach(({a, r, st}) => {
+    matches.forEach(({a, r, st, period}) => {
       const tr = document.createElement('tr');
       tr.className = st.status === 'New Hire' ? 'status-newhire'
         : st.status === 'Separation' ? 'status-separation'
@@ -1220,6 +1306,7 @@ function renderDashboardView(){
       tr.title = `Open ${a.key}'s tracker`;
       tr.innerHTML = `
         <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${a.color};margin-right:8px;vertical-align:middle;"></span>${a.key}</td>
+        <td style="white-space:nowrap;">${period}</td>
         <td>${r.idno}</td>
         <td class="name-cell">${r.lastname}, ${r.firstname}</td>
         <td>${r.location || ''}</td>
@@ -1229,6 +1316,7 @@ function renderDashboardView(){
       `;
       tr.addEventListener('click', () => {
         currentAffiliate = a.key;
+        if(store[a.key].periodOrder.includes(period)) store[a.key].currentPeriod = period;
         searchTerm = '';
         document.getElementById('searchBox').value = '';
         setFilter(dashboardFilter === '__pending' ? '__pending' : dashboardFilter === 'all' ? 'all' : dashboardFilter);
