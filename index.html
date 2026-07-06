@@ -729,6 +729,74 @@ function guessStatus(remarksOriginal){
   return 'Active';
 }
 
+/* ---------- Flexible workbook parsing ----------
+   Different affiliates' files put the header row on different rows and
+   name columns differently (IDNO vs "ID No." vs "Employee No"). Detect
+   the header row anywhere in the first 10 rows and map common aliases. */
+const HEADER_ALIASES = {
+  no:       ['no','no.','#','num','seq','seq.'],
+  location: ['location','loc','branch','site','area','store','department','dept','dept.'],
+  idno:     ['idno','id no','id no.','id number','idnumber','id','id#','emp no','emp no.','empno','emp #','emp id','empid','employee no','employee no.','employee number','employee id','bio no','bio no.','biometric no'],
+  lastname: ['lastname','last name','surname','family name'],
+  firstname:['firstname','first name','given name','givenname'],
+  remarks:  ['remarks','remark','notes','note','comment','comments']
+};
+
+function normHeader(v){
+  return String(v ?? '').toLowerCase().replace(/[^a-z0-9#. ]/g,' ').replace(/\s+/g,' ').trim();
+}
+
+function matchHeader(cell){
+  const n = normHeader(cell);
+  if(!n) return null;
+  for(const key in HEADER_ALIASES){
+    if(HEADER_ALIASES[key].includes(n)) return key;
+  }
+  return null;
+}
+
+// Returns array of clean rows, or null if no usable header row was found.
+function parseSheet(ws){
+  const grid = XLSX.utils.sheet_to_json(ws, {header:1, defval:null});
+  let colMap = null, headerRowIdx = -1;
+  for(let i = 0; i < Math.min(grid.length, 10); i++){
+    const row = grid[i] || [];
+    const map = {};
+    row.forEach((cell, ci) => {
+      const key = matchHeader(cell);
+      if(key !== null && !(key in map)) map[key] = ci;
+    });
+    // a real header row needs an ID column plus at least one name column
+    if('idno' in map && ('lastname' in map || 'firstname' in map)){
+      // fall back to a STATUS column for remarks if there's no remarks column
+      if(!('remarks' in map)){
+        row.forEach((cell, ci) => {
+          if(normHeader(cell) === 'status' && !('remarks' in map)) map.remarks = ci;
+        });
+      }
+      colMap = map; headerRowIdx = i; break;
+    }
+  }
+  if(headerRowIdx === -1) return null;
+
+  const rows = [];
+  for(let i = headerRowIdx + 1; i < grid.length; i++){
+    const row = grid[i] || [];
+    const get = k => (k in colMap && row[colMap[k]] !== undefined) ? row[colMap[k]] : null;
+    const idno = get('idno');
+    if(idno === null || String(idno).trim() === '') continue;
+    rows.push({
+      no: get('no'),
+      location: get('location') !== null ? String(get('location')).trim() : '',
+      idno: String(idno).trim(),
+      lastname: get('lastname') !== null ? String(get('lastname')).trim() : '',
+      firstname: get('firstname') !== null ? String(get('firstname')).trim() : '',
+      remarksOriginal: get('remarks') !== null ? String(get('remarks')).trim() : ''
+    });
+  }
+  return rows;
+}
+
 function currentAffColor(){
   const found = AFFILIATES.find(a => a.key === currentAffiliate);
   return found ? found.color : '#9c714a';
@@ -772,24 +840,29 @@ document.getElementById('fileInput').addEventListener('change', function(e){
     const wb = XLSX.read(data, {type:'array'});
     const newWorkbookData = {};
     const newOrder = [];
+    const skippedSheets = [];
     wb.SheetNames.forEach(sheetName => {
       const ws = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(ws, {range:1, defval:null});
-      const cleanRows = rows
-        .filter(r => r.IDNO)
-        .map(r => ({
-          no: r.NO,
-          location: r.LOCATION || '',
-          idno: String(r.IDNO).trim(),
-          lastname: r.LASTNAME || '',
-          firstname: r.FIRSTNAME || '',
-          remarksOriginal: r.REMARKS || ''
-        }));
-      if(cleanRows.length){
+      const cleanRows = parseSheet(ws);
+      if(cleanRows && cleanRows.length){
         newWorkbookData[sheetName] = cleanRows;
         newOrder.push(sheetName);
+      } else {
+        skippedSheets.push(sheetName);
       }
     });
+
+    if(newOrder.length === 0){
+      alert(
+        'No employee data found in this file.\n\n' +
+        'The tracker looks for a header row (anywhere in the first 10 rows of each sheet) that has:\n' +
+        '  • an ID column — e.g. IDNO, ID No., Employee No.\n' +
+        '  • a name column — e.g. LASTNAME / FIRSTNAME\n\n' +
+        'Sheets checked: ' + wb.SheetNames.join(', ') + '\n\n' +
+        'Open the file in Excel and check the column headings, then import again.'
+      );
+      return;
+    }
 
     const aff = store[currentAffiliate];
 
