@@ -180,6 +180,13 @@
     border-radius:10px;
     padding:14px 16px;
     box-shadow:0 1px 3px rgba(42,32,24,0.06);
+    cursor:pointer;
+    transition:all .15s ease;
+  }
+  .stat-card:hover{border-color:var(--gold-dim);}
+  .stat-card.selected{
+    border-color:var(--aff);
+    box-shadow:0 0 0 2px var(--aff) inset, 0 1px 3px rgba(42,32,24,0.06);
   }
   .stat-num{font-family:'Playfair Display',serif; font-size:26px; font-weight:700; color:var(--text-hi);}
   .stat-label{font-size:10.5px; text-transform:uppercase; letter-spacing:0.1em; color:var(--text-dim); margin-top:2px;}
@@ -229,10 +236,13 @@
     align-items:center;
     font-size:12.5px;
     color:var(--text-mid);
-    padding:4px 0;
+    padding:4px 6px;
+    margin:0 -6px;
+    border-radius:5px;
     border-bottom:1px dashed var(--navy-800);
   }
   .aff-card-row:last-child{border-bottom:none;}
+  .aff-card-row:hover{background:var(--navy-800);}
   .aff-card-row b{font-size:13.5px;}
   .aff-card-open{
     margin-top:10px;
@@ -411,13 +421,13 @@
 <div id="periodBar" class="period-bar"></div>
 
 <div id="statsRow" class="stats-row" style="display:none;">
-  <div class="stat-card"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Total Staff</div></div>
-  <div class="stat-card newhire"><div class="stat-num" id="statNewHire">0</div><div class="stat-label">New Hire</div></div>
-  <div class="stat-card separation"><div class="stat-num" id="statSeparation">0</div><div class="stat-label">Separation</div></div>
-  <div class="stat-card maternity"><div class="stat-num" id="statMaternity">0</div><div class="stat-label">Maternity</div></div>
-  <div class="stat-card transfer"><div class="stat-num" id="statTransfer">0</div><div class="stat-label">Transfer</div></div>
-  <div class="stat-card nologs"><div class="stat-num" id="statNoLogs">0</div><div class="stat-label">No Logs</div></div>
-  <div class="stat-card pending"><div class="stat-num" id="statPending">0</div><div class="stat-label">Logs Pending</div></div>
+  <div class="stat-card" data-filter="all"><div class="stat-num" id="statTotal">0</div><div class="stat-label">Total Staff</div></div>
+  <div class="stat-card newhire" data-filter="New Hire"><div class="stat-num" id="statNewHire">0</div><div class="stat-label">New Hire</div></div>
+  <div class="stat-card separation" data-filter="Separation"><div class="stat-num" id="statSeparation">0</div><div class="stat-label">Separation</div></div>
+  <div class="stat-card maternity" data-filter="Maternity"><div class="stat-num" id="statMaternity">0</div><div class="stat-label">Maternity</div></div>
+  <div class="stat-card transfer" data-filter="Transfer"><div class="stat-num" id="statTransfer">0</div><div class="stat-label">Transfer</div></div>
+  <div class="stat-card nologs" data-filter="No Logs"><div class="stat-num" id="statNoLogs">0</div><div class="stat-label">No Logs</div></div>
+  <div class="stat-card pending" data-filter="__pending"><div class="stat-num" id="statPending">0</div><div class="stat-label">Logs Pending</div></div>
 </div>
 
 <div class="toolbar" id="toolbar" style="display:none;">
@@ -898,6 +908,19 @@ function parseSheet(ws){
   return rows;
 }
 
+// Set the active status filter and keep the filter pills in sync
+function setFilter(filter){
+  currentFilter = filter;
+  document.querySelectorAll('.pill').forEach(p => p.classList.toggle('active', p.dataset.filter === filter));
+}
+
+function updateStatTileSelection(){
+  const onDashboard = currentAffiliate === DASHBOARD_KEY;
+  document.querySelectorAll('#statsRow .stat-card').forEach(c => {
+    c.classList.toggle('selected', !onDashboard && c.dataset.filter === currentFilter);
+  });
+}
+
 function currentAffColor(){
   const found = AFFILIATES.find(a => a.key === currentAffiliate);
   return found ? found.color : '#9c714a';
@@ -1089,14 +1112,14 @@ function renderDashboardView(){
       card.innerHTML = `
         <div class="aff-card-name"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${a.color};margin-right:8px;"></span>${a.key}</div>
         <div class="aff-card-period">${c.period}</div>
-        <div class="aff-card-row"><span>Total Staff</span><b style="color:var(--text-hi);">${c.total}</b></div>
-        <div class="aff-card-row"><span>Active</span><b style="color:var(--text-mid);">${c.active}</b></div>
-        <div class="aff-card-row"><span>New Hire</span><b style="color:var(--st-newhire);">${c.newhire}</b></div>
-        <div class="aff-card-row"><span>Separation</span><b style="color:var(--st-separation);">${c.separation}</b></div>
-        <div class="aff-card-row"><span>Maternity</span><b style="color:var(--st-maternity);">${c.maternity}</b></div>
-        <div class="aff-card-row"><span>Transfer</span><b style="color:var(--st-transfer);">${c.transfer}</b></div>
-        <div class="aff-card-row"><span>No Logs</span><b style="color:var(--st-nologs);">${c.nologs}</b></div>
-        <div class="aff-card-row"><span>Logs Pending</span><b style="color:${a.color};">${c.pending}</b></div>
+        <div class="aff-card-row" data-filter="all" title="Show everyone"><span>Total Staff</span><b style="color:var(--text-hi);">${c.total}</b></div>
+        <div class="aff-card-row" data-filter="Active" title="Show only Active"><span>Active</span><b style="color:var(--text-mid);">${c.active}</b></div>
+        <div class="aff-card-row" data-filter="New Hire" title="Show only New Hire"><span>New Hire</span><b style="color:var(--st-newhire);">${c.newhire}</b></div>
+        <div class="aff-card-row" data-filter="Separation" title="Show only Separation"><span>Separation</span><b style="color:var(--st-separation);">${c.separation}</b></div>
+        <div class="aff-card-row" data-filter="Maternity" title="Show only Maternity"><span>Maternity</span><b style="color:var(--st-maternity);">${c.maternity}</b></div>
+        <div class="aff-card-row" data-filter="Transfer" title="Show only Transfer"><span>Transfer</span><b style="color:var(--st-transfer);">${c.transfer}</b></div>
+        <div class="aff-card-row" data-filter="No Logs" title="Show only No Logs"><span>No Logs</span><b style="color:var(--st-nologs);">${c.nologs}</b></div>
+        <div class="aff-card-row" data-filter="__pending" title="Show only Logs Pending"><span>Logs Pending</span><b style="color:${a.color};">${c.pending}</b></div>
         <div class="aff-card-open">Open tracker →</div>
       `;
     } else {
@@ -1107,13 +1130,14 @@ function renderDashboardView(){
         <div class="aff-card-open">Open tracker →</div>
       `;
     }
-    card.addEventListener('click', () => {
+    card.addEventListener('click', (e) => {
+      // clicking a specific status line opens the tracker pre-filtered to it
+      const rowEl = e.target.closest('.aff-card-row');
+      const filter = (rowEl && rowEl.dataset.filter) ? rowEl.dataset.filter : 'all';
       currentAffiliate = a.key;
-      currentFilter = 'all';
       searchTerm = '';
       document.getElementById('searchBox').value = '';
-      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-      document.querySelector('.pill[data-filter="all"]').classList.add('active');
+      setFilter(filter);
       renderAll();
     });
     cardsWrap.appendChild(card);
@@ -1126,6 +1150,7 @@ function renderDashboardView(){
   document.getElementById('statTransfer').textContent = grand.transfer;
   document.getElementById('statNoLogs').textContent = grand.nologs;
   document.getElementById('statPending').textContent = grand.pending;
+  updateStatTileSelection();
 
   const wrap = document.getElementById('tableWrap');
   wrap.innerHTML = '';
@@ -1261,6 +1286,7 @@ function renderStatsAndTable(){
   document.getElementById('statTransfer').textContent = counts.transfer;
   document.getElementById('statNoLogs').textContent = counts.nologs;
   document.getElementById('statPending').textContent = counts.pending;
+  updateStatTileSelection();
 
   let visibleRows = rows.filter(r => {
     const st = stateForPeriod[r.idno] || {status:'Active', logsChecked:false, remarks:''};
@@ -1370,10 +1396,17 @@ document.getElementById('addEmployeeBtn').addEventListener('click', addEmployeeR
 
 document.getElementById('filterPills').addEventListener('click', function(e){
   if(e.target.tagName !== 'BUTTON') return;
-  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
-  e.target.classList.add('active');
-  currentFilter = e.target.dataset.filter;
+  setFilter(e.target.dataset.filter);
   renderCurrentView();
+});
+
+// Clicking a stat tile inside an affiliate filters the table to that status
+document.getElementById('statsRow').addEventListener('click', function(e){
+  if(currentAffiliate === DASHBOARD_KEY) return;
+  const tile = e.target.closest('.stat-card');
+  if(!tile || !tile.dataset.filter) return;
+  setFilter(tile.dataset.filter);
+  renderStatsAndTable();
 });
 
 document.getElementById('exportBtn').addEventListener('click', function(){
