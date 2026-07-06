@@ -397,7 +397,7 @@ const AFFILIATES = [
 const DASHBOARD_KEY = '__dashboard__';
 let currentAffiliate = DASHBOARD_KEY;
 
-// Per-affiliate in-memory state, hydrated from Claude's persistent artifact storage (syncs across devices for this account)
+// Per-affiliate in-memory state, hydrated from the storage backend (Claude artifact storage when available, otherwise this browser's localStorage)
 let store = {};
 AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], trackerState:{}, currentPeriod:null });
 
@@ -407,20 +407,37 @@ let syncStatus = 'idle'; // idle | syncing | error
 
 function storageKey(affKey){ return `affTracker_${affKey}`; }
 
+// Storage backend: use Claude's persistent artifact storage when the page runs
+// inside Claude.ai; otherwise (GitHub Pages, opened as a local file, etc.)
+// fall back to the browser's localStorage so saving still works.
+const hasRemoteStorage = typeof window.storage === 'object' && window.storage !== null
+  && typeof window.storage.get === 'function' && typeof window.storage.set === 'function';
+
+const storageBackend = hasRemoteStorage ? window.storage : {
+  async get(key){
+    const v = localStorage.getItem(key);
+    return v === null ? null : { value: v };
+  },
+  async set(key, value){
+    localStorage.setItem(key, value);
+    return { key, value };
+  }
+};
+
 function setSyncStatus(s){
   syncStatus = s;
   const el = document.getElementById('syncIndicator');
   if(!el) return;
-  if(s === 'syncing'){ el.textContent = 'Syncing…'; el.style.color = 'var(--text-dim)'; }
-  else if(s === 'error'){ el.textContent = 'Sync failed — check connection'; el.style.color = 'var(--st-separation)'; }
-  else { el.textContent = 'Synced'; el.style.color = 'var(--st-newhire)'; }
+  if(s === 'syncing'){ el.textContent = hasRemoteStorage ? 'Syncing…' : 'Saving…'; el.style.color = 'var(--text-dim)'; }
+  else if(s === 'error'){ el.textContent = hasRemoteStorage ? 'Sync failed — check connection' : 'Save failed — browser storage unavailable'; el.style.color = 'var(--st-separation)'; }
+  else { el.textContent = hasRemoteStorage ? 'Synced' : 'Saved in this browser'; el.style.color = 'var(--st-newhire)'; }
 }
 
 async function loadFromStorage(){
   setSyncStatus('syncing');
   for(const a of AFFILIATES){
     try{
-      const result = await window.storage.get(storageKey(a.key), false);
+      const result = await storageBackend.get(storageKey(a.key), false);
       if(result && result.value){
         const parsed = JSON.parse(result.value);
         store[a.key] = {
@@ -440,7 +457,7 @@ async function loadFromStorage(){
 async function saveAffiliate(affKey){
   setSyncStatus('syncing');
   try{
-    const result = await window.storage.set(storageKey(affKey), JSON.stringify(store[affKey]), false);
+    const result = await storageBackend.set(storageKey(affKey), JSON.stringify(store[affKey]), false);
     if(!result){ setSyncStatus('error'); return; }
     setSyncStatus('idle');
   }catch(e){
