@@ -619,6 +619,22 @@ async function checkForRemoteChanges(){
   }catch(e){ /* transient network issue — next check will retry */ }
 }
 
+/* ---------- Sync link (…#sync=xxx) ----------
+   Lets the user bookmark one link that turns sync on automatically in
+   any new browser, instead of pasting the token by hand. The token is
+   read from the URL fragment and immediately removed from the address bar. */
+function readSyncLinkToken(){
+  const m = (location.hash || '').match(/[#&]sync=([^&]+)/);
+  if(!m) return null;
+  history.replaceState(null, '', location.pathname + location.search);
+  try{ return atob(decodeURIComponent(m[1])).trim(); }
+  catch(e){ return decodeURIComponent(m[1]).trim(); }
+}
+
+function buildSyncLink(){
+  return location.href.split('#')[0] + '#sync=' + encodeURIComponent(btoa(cloudToken));
+}
+
 /* ---------- Sync setup dialog ---------- */
 function updateSyncBtn(){
   const btn = document.getElementById('syncBtn');
@@ -630,12 +646,24 @@ function openSyncModal(){
   if(cloudToken){
     body.innerHTML = `
       <p>Cloud sync is <b style="color:var(--st-newhire);">ON</b>. Every change saves automatically to a secret Gist on your GitHub account, and any device using the same token stays up to date.</p>
-      <p><b>To add another device:</b> open this tracker there, click "Enable Cloud Sync", and paste the <b>same GitHub token</b> you used here.</p>
+      <p><b>Easiest way to add another device or browser:</b> copy your personal sync link below, then open (and bookmark) it there — sync turns on automatically, no typing needed.</p>
+      <p style="font-size:12px;color:var(--st-separation);">Keep the link private: anyone who has it can view and edit your tracker data.</p>
       <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
-        <button class="btn btn-gold" id="syncNowBtn">Sync Now</button>
+        <button class="btn btn-gold" id="copySyncLinkBtn">Copy Sync Link</button>
+        <button class="btn" id="syncNowBtn">Sync Now</button>
         <button class="btn" id="syncCloseBtn">Close</button>
         <button class="btn" id="syncDisconnectBtn" style="margin-left:auto;color:var(--st-separation);">Turn Off on This Device</button>
       </div>`;
+    document.getElementById('copySyncLinkBtn').addEventListener('click', async function(){
+      const link = buildSyncLink();
+      try{
+        await navigator.clipboard.writeText(link);
+        this.textContent = 'Copied! Paste it in your other browser';
+        setTimeout(() => { this.textContent = 'Copy Sync Link'; }, 4000);
+      }catch(e){
+        prompt('Copy this link and open it on your other device:', link);
+      }
+    });
     document.getElementById('syncNowBtn').addEventListener('click', async () => {
       setSyncStatus('syncing');
       try{ const changed = await pullFromCloud(); await doPush(); if(changed) renderAll(); }
@@ -1394,6 +1422,15 @@ document.getElementById('exportBtn').addEventListener('click', function(){
     const m = await storageBackend.get(META_KEY, false);
     if(m && m.value) metaUpdatedAt = JSON.parse(m.value) || {};
   }catch(e){ /* nothing saved yet */ }
+  const linkToken = readSyncLinkToken();
+  if(linkToken && linkToken !== cloudToken){
+    cloudToken = linkToken;
+    cloudGistId = '';
+    try{
+      await storageBackend.set(TOKEN_KEY, cloudToken, false);
+      await storageBackend.set(GISTID_KEY, '', false);
+    }catch(e){}
+  }
   updateSyncBtn();
   if(cloudToken){
     setSyncStatus('syncing');
