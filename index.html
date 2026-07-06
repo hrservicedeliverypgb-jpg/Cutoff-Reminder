@@ -714,8 +714,19 @@ function closeSyncModal(){
 async function connectCloud(){
   const input = document.getElementById('tokenInput');
   const errEl = document.getElementById('tokenError');
-  const token = (input.value || '').trim();
+  // tokens never contain spaces — remove any that snuck in while copying
+  let token = (input.value || '').replace(/\s+/g, '');
+  // be forgiving if the whole sync link was pasted instead of the token
+  const linkMatch = token.match(/[#&]sync=([^&]+)/);
+  if(linkMatch){
+    try{ token = atob(decodeURIComponent(linkMatch[1])).replace(/\s+/g, ''); }catch(e){}
+  }
   if(!token){ errEl.style.display = 'block'; errEl.textContent = 'Paste the token first.'; return; }
+  if(token.startsWith('github_pat_')){
+    errEl.style.display = 'block';
+    errEl.textContent = 'This is a "fine-grained" token — GitHub does not allow those for gists. Please generate a CLASSIC token instead: use the link in step 2 above (it opens the classic token page automatically).';
+    return;
+  }
   const btn = document.getElementById('tokenConnectBtn');
   btn.disabled = true; btn.textContent = 'Connecting…';
   cloudToken = token;
