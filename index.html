@@ -9,19 +9,19 @@
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
-    --navy-950:#ffffff;
-    --navy-900:#ffffff;
-    --navy-800:#f5f1ea;
-    --navy-700:#e2d9c9;
-    --navy-600:#cdbea3;
-    --gold:#9c714a;
-    --gold-bright:#c79a68;
-    --gold-dim:#7a5636;
-    --text-hi:#2a2018;
-    --text-mid:#5c5248;
-    --text-dim:#948a7d;
-    --aff:#9c714a;
-    --aff-bg:#f1ece3;
+    --navy-950:#e9e1f7;   /* page background — light purple */
+    --navy-900:#f7f3fd;   /* cards */
+    --navy-800:#ece3f9;   /* raised surfaces */
+    --navy-700:#d7c7ef;   /* soft borders */
+    --navy-600:#b99fe0;   /* strong borders */
+    --gold:#6d3fb8;       /* primary accent — purple */
+    --gold-bright:#9268d8;
+    --gold-dim:#54308f;
+    --text-hi:#2b1b4d;
+    --text-mid:#584a7d;
+    --text-dim:#8b7fae;
+    --aff:#6d3fb8;
+    --aff-bg:#ece3f9;
     --st-newhire:#1f7a4c;
     --st-newhire-bg:#e4f5ec;
     --st-separation:#b23a4a;
@@ -50,15 +50,16 @@
     align-items:flex-end;
     flex-wrap:wrap;
     gap:20px;
-    border-bottom:1px solid var(--navy-700);
-    padding-bottom:22px;
-    margin-bottom:20px;
+    background:linear-gradient(135deg,#2e1a54,#4a2d85);
+    margin:-32px -40px 24px;
+    padding:30px 40px 26px;
+    box-shadow:0 4px 18px rgba(46,26,84,0.25);
   }
   .eyebrow{
     text-transform:uppercase;
     letter-spacing:0.22em;
     font-size:11px;
-    color:var(--gold);
+    color:#c9b8ec;
     font-weight:600;
     margin-bottom:6px;
   }
@@ -67,11 +68,11 @@
     font-size:32px;
     font-weight:800;
     margin:0;
-    color:var(--text-hi);
+    color:#ffffff;
     letter-spacing:0.01em;
   }
   .subtitle{
-    color:var(--text-dim);
+    color:rgba(255,255,255,0.78);
     font-size:13.5px;
     margin-top:6px;
     max-width:560px;
@@ -96,7 +97,7 @@
   .btn:hover{border-color:var(--gold-dim); background:var(--navy-700);}
   .btn-gold{
     background:linear-gradient(135deg,var(--gold-bright),var(--gold));
-    color:#1a1305;
+    color:#ffffff;
     border:none;
   }
   .btn-gold:hover{filter:brightness(1.08);}
@@ -481,6 +482,7 @@ let store = {};
 AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], trackerState:{}, currentPeriod:null });
 
 let currentFilter = 'all';
+let dashboardFilter = null;   // status drill-down open on the Main Dashboard
 let searchTerm = '';
 let syncStatus = 'idle'; // idle | syncing | error
 
@@ -507,9 +509,9 @@ function setSyncStatus(s){
   syncStatus = s;
   const el = document.getElementById('syncIndicator');
   if(!el) return;
-  if(s === 'syncing'){ el.textContent = cloudToken ? 'Syncing…' : 'Saving…'; el.style.color = 'var(--text-dim)'; }
-  else if(s === 'error'){ el.textContent = cloudToken ? 'Sync failed — check connection / token' : 'Save failed — browser storage unavailable'; el.style.color = 'var(--st-separation)'; }
-  else { el.textContent = cloudToken ? 'Synced across devices' : 'Saved on this device only'; el.style.color = cloudToken ? 'var(--st-newhire)' : 'var(--text-dim)'; }
+  if(s === 'syncing'){ el.textContent = cloudToken ? 'Syncing…' : 'Saving…'; el.style.color = '#cfc2ea'; }
+  else if(s === 'error'){ el.textContent = cloudToken ? 'Sync failed — check connection / token' : 'Save failed — browser storage unavailable'; el.style.color = '#ff9fb2'; }
+  else { el.textContent = cloudToken ? 'Synced across devices' : 'Saved on this device only'; el.style.color = cloudToken ? '#8ff0b4' : '#cfc2ea'; }
 }
 
 async function loadFromStorage(){
@@ -917,13 +919,19 @@ function setFilter(filter){
 function updateStatTileSelection(){
   const onDashboard = currentAffiliate === DASHBOARD_KEY;
   document.querySelectorAll('#statsRow .stat-card').forEach(c => {
-    c.classList.toggle('selected', !onDashboard && c.dataset.filter === currentFilter);
+    const sel = onDashboard ? (dashboardFilter !== null && c.dataset.filter === dashboardFilter)
+                            : (c.dataset.filter === currentFilter);
+    c.classList.toggle('selected', sel);
   });
+}
+
+function dashboardFilterLabel(f){
+  return f === 'all' ? 'All Staff' : f === '__pending' ? 'Logs Pending' : f;
 }
 
 function currentAffColor(){
   const found = AFFILIATES.find(a => a.key === currentAffiliate);
-  return found ? found.color : '#9c714a';
+  return found ? found.color : '#6d3fb8';
 }
 
 function applyAffiliateTheme(){
@@ -1057,8 +1065,8 @@ function renderAffiliateBar(){
 
   const dashTab = document.createElement('button');
   dashTab.className = 'affiliate-tab' + (currentAffiliate === DASHBOARD_KEY ? ' active' : '');
-  dashTab.style.setProperty('--dotcolor', '#9c714a');
-  dashTab.style.setProperty('--tabcolor', '#9c714a');
+  dashTab.style.setProperty('--dotcolor', '#6d3fb8');
+  dashTab.style.setProperty('--tabcolor', '#6d3fb8');
   dashTab.innerHTML = `<span class="dot"></span>Main Dashboard`;
   dashTab.addEventListener('click', () => {
     currentAffiliate = DASHBOARD_KEY;
@@ -1160,8 +1168,83 @@ function renderDashboardView(){
   wrap.appendChild(heading1);
   wrap.appendChild(cardsWrap);
 
-  document.getElementById('footerNote').textContent =
-    `Click an affiliate card to open its full tracker.`;
+  // Drill-down list: opened by clicking one of the stat tiles up top
+  if(dashboardFilter !== null){
+    const matches = [];
+    AFFILIATES.forEach(a => {
+      const aff = store[a.key];
+      if(!aff.currentPeriod) return;
+      const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
+      (aff.workbookData[aff.currentPeriod] || []).forEach(r => {
+        const st = stateForPeriod[r.idno] || {status:'Active', logsChecked:false, remarks:''};
+        const match = dashboardFilter === 'all' ? true
+          : dashboardFilter === '__pending' ? !st.logsChecked
+          : st.status === dashboardFilter;
+        if(match) matches.push({a, r, st});
+      });
+    });
+
+    const headRow = document.createElement('div');
+    headRow.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin:26px 0 10px;';
+    headRow.innerHTML = `
+      <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--text-hi);">${dashboardFilterLabel(dashboardFilter)} — All Affiliates (${matches.length})</div>
+      <button class="btn" id="closeDrilldownBtn" style="padding:6px 12px;font-size:12px;">✕ Close</button>
+    `;
+    wrap.appendChild(headRow);
+
+    const listTable = document.createElement('table');
+    listTable.innerHTML = `
+      <thead>
+        <tr>
+          <th>Affiliate</th>
+          <th>ID No.</th>
+          <th>Name</th>
+          <th>Location</th>
+          <th>Status</th>
+          <th>Remarks</th>
+          <th>Logs</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+    const tbody = listTable.querySelector('tbody');
+    matches.forEach(({a, r, st}) => {
+      const tr = document.createElement('tr');
+      tr.className = st.status === 'New Hire' ? 'status-newhire'
+        : st.status === 'Separation' ? 'status-separation'
+        : st.status === 'Maternity' ? 'status-maternity'
+        : st.status === 'Transfer' ? 'status-transfer'
+        : st.status === 'No Logs' ? 'status-nologs' : '';
+      tr.style.cursor = 'pointer';
+      tr.title = `Open ${a.key}'s tracker`;
+      tr.innerHTML = `
+        <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${a.color};margin-right:8px;vertical-align:middle;"></span>${a.key}</td>
+        <td>${r.idno}</td>
+        <td class="name-cell">${r.lastname}, ${r.firstname}</td>
+        <td>${r.location || ''}</td>
+        <td>${st.status}</td>
+        <td>${st.remarks || ''}</td>
+        <td>${st.logsChecked ? 'Checked' : 'Pending'}</td>
+      `;
+      tr.addEventListener('click', () => {
+        currentAffiliate = a.key;
+        searchTerm = '';
+        document.getElementById('searchBox').value = '';
+        setFilter(dashboardFilter === '__pending' ? '__pending' : dashboardFilter === 'all' ? 'all' : dashboardFilter);
+        renderAll();
+      });
+      tbody.appendChild(tr);
+    });
+    wrap.appendChild(listTable);
+    headRow.querySelector('#closeDrilldownBtn').addEventListener('click', () => {
+      dashboardFilter = null;
+      renderDashboardView();
+    });
+  }
+
+  document.getElementById('footerNote').textContent = dashboardFilter !== null
+    ? `Click a row to open that employee's affiliate tracker, filtered to ${dashboardFilterLabel(dashboardFilter)}.`
+    : `Click a number tile or an affiliate card to see the people behind it.`;
 }
 
 function renderPeriodBar(){
@@ -1400,13 +1483,18 @@ document.getElementById('filterPills').addEventListener('click', function(e){
   renderCurrentView();
 });
 
-// Clicking a stat tile inside an affiliate filters the table to that status
+// Clicking a stat tile filters the affiliate table, or on the Main
+// Dashboard opens a cross-affiliate list of the employees behind the number
 document.getElementById('statsRow').addEventListener('click', function(e){
-  if(currentAffiliate === DASHBOARD_KEY) return;
   const tile = e.target.closest('.stat-card');
   if(!tile || !tile.dataset.filter) return;
-  setFilter(tile.dataset.filter);
-  renderStatsAndTable();
+  if(currentAffiliate === DASHBOARD_KEY){
+    dashboardFilter = (dashboardFilter === tile.dataset.filter) ? null : tile.dataset.filter;
+    renderDashboardView();
+  } else {
+    setFilter(tile.dataset.filter);
+    renderStatsAndTable();
+  }
 });
 
 document.getElementById('exportBtn').addEventListener('click', function(){
