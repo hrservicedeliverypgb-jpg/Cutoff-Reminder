@@ -340,6 +340,7 @@
   </div>
   <div class="header-actions">
     <span id="syncIndicator" style="font-size:11.5px;color:var(--text-dim);margin-right:4px;">Loading…</span>
+    <button class="btn" id="syncBtn">Enable Cloud Sync</button>
     <input type="file" id="fileInput" accept=".xlsx,.xls">
     <button class="btn" id="importBtn">Import Cut-off Workbook</button>
     <button class="btn btn-gold" id="exportBtn">Export Current Cut-off (CSV)</button>
@@ -382,6 +383,13 @@
 
 <div class="footer-note" id="footerNote"></div>
 
+<div id="syncModal" style="display:none;position:fixed;inset:0;background:rgba(42,32,24,0.45);z-index:50;align-items:center;justify-content:center;">
+  <div style="background:var(--navy-900);border:1px solid var(--navy-600);border-radius:12px;max-width:620px;width:92%;padding:26px 30px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(42,32,24,0.25);">
+    <h2 style="font-family:'Playfair Display',serif;font-size:22px;margin:0 0 4px;color:var(--text-hi);">Sync Across Devices</h2>
+    <div id="syncModalBody" style="font-size:13.5px;color:var(--text-mid);line-height:1.6;"></div>
+  </div>
+</div>
+
 <script>
 const STATUS_LIST = ['Active','New Hire','Separation','Maternity','No Logs'];
 
@@ -397,7 +405,7 @@ const AFFILIATES = [
 const DASHBOARD_KEY = '__dashboard__';
 let currentAffiliate = DASHBOARD_KEY;
 
-// Per-affiliate in-memory state, hydrated from Claude's persistent artifact storage (syncs across devices for this account)
+// Per-affiliate in-memory state, hydrated from the storage backend (Claude artifact storage when available, otherwise this browser's localStorage)
 let store = {};
 AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], trackerState:{}, currentPeriod:null });
 
@@ -407,20 +415,37 @@ let syncStatus = 'idle'; // idle | syncing | error
 
 function storageKey(affKey){ return `affTracker_${affKey}`; }
 
+// Storage backend: use Claude's persistent artifact storage when the page runs
+// inside Claude.ai; otherwise (GitHub Pages, opened as a local file, etc.)
+// fall back to the browser's localStorage so saving still works.
+const hasRemoteStorage = typeof window.storage === 'object' && window.storage !== null
+  && typeof window.storage.get === 'function' && typeof window.storage.set === 'function';
+
+const storageBackend = hasRemoteStorage ? window.storage : {
+  async get(key){
+    const v = localStorage.getItem(key);
+    return v === null ? null : { value: v };
+  },
+  async set(key, value){
+    localStorage.setItem(key, value);
+    return { key, value };
+  }
+};
+
 function setSyncStatus(s){
   syncStatus = s;
   const el = document.getElementById('syncIndicator');
   if(!el) return;
-  if(s === 'syncing'){ el.textContent = 'Syncing…'; el.style.color = 'var(--text-dim)'; }
-  else if(s === 'error'){ el.textContent = 'Sync failed — check connection'; el.style.color = 'var(--st-separation)'; }
-  else { el.textContent = 'Synced'; el.style.color = 'var(--st-newhire)'; }
+  if(s === 'syncing'){ el.textContent = cloudToken ? 'Syncing…' : 'Saving…'; el.style.color = 'var(--text-dim)'; }
+  else if(s === 'error'){ el.textContent = cloudToken ? 'Sync failed — check connection / token' : 'Save failed — browser storage unavailable'; el.style.color = 'var(--st-separation)'; }
+  else { el.textContent = cloudToken ? 'Synced across devices' : 'Saved on this device only'; el.style.color = cloudToken ? 'var(--st-newhire)' : 'var(--text-dim)'; }
 }
 
 async function loadFromStorage(){
   setSyncStatus('syncing');
   for(const a of AFFILIATES){
     try{
-      const result = await window.storage.get(storageKey(a.key), false);
+      const result = await storageBackend.get(storageKey(a.key), false);
       if(result && result.value){
         const parsed = JSON.parse(result.value);
         store[a.key] = {
@@ -438,16 +463,262 @@ async function loadFromStorage(){
 }
 
 async function saveAffiliate(affKey){
+  metaUpdatedAt[affKey] = Date.now();
   setSyncStatus('syncing');
   try{
-    const result = await window.storage.set(storageKey(affKey), JSON.stringify(store[affKey]), false);
+    const result = await storageBackend.set(storageKey(affKey), JSON.stringify(store[affKey]), false);
     if(!result){ setSyncStatus('error'); return; }
-    setSyncStatus('idle');
+    await storageBackend.set(META_KEY, JSON.stringify(metaUpdatedAt), false);
   }catch(e){
     console.error('Storage error', e);
     setSyncStatus('error');
+    return;
+  }
+  if(cloudToken){ schedulePush(); }
+  else { setSyncStatus('idle'); }
+}
+
+/* ============ Cloud sync across devices (GitHub secret Gist) ============
+   Data lives in a secret Gist on the user's own GitHub account. Every
+   device with the same token reads/writes the same Gist. Per-affiliate
+   timestamps decide merges: the newest change wins. */
+const GIST_FILENAME = 'cutoff-tracker-data.json';
+const GIST_DESC = 'PGB Cut-off Tracker — synced data (managed automatically by the tracker page)';
+const TOKEN_KEY = 'cutoffSync_token';
+const GISTID_KEY = 'cutoffSync_gistId';
+const META_KEY = 'cutoffSync_updatedAt';
+
+let cloudToken = '';
+let cloudGistId = '';
+let metaUpdatedAt = {};          // affKey -> ms timestamp of last local change
+let pushTimer = null;
+let pushing = false;
+let pushQueued = false;
+
+async function gistApi(method, path, body){
+  const res = await fetch('https://api.github.com' + path, {
+    method: method,
+    headers: Object.assign({
+      'Authorization': 'Bearer ' + cloudToken,
+      'Accept': 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    }, body ? {'Content-Type':'application/json'} : {}),
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if(!res.ok){
+    const err = new Error('GitHub API error ' + res.status);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+function buildSyncDoc(){
+  const doc = { version:1, affiliates:{} };
+  AFFILIATES.forEach(a => {
+    doc.affiliates[a.key] = { data: store[a.key], updatedAt: metaUpdatedAt[a.key] || 0 };
+  });
+  return doc;
+}
+
+async function findOrCreateGist(){
+  const gists = await gistApi('GET', '/gists?per_page=100');
+  const found = gists.find(g => g.files && g.files[GIST_FILENAME]);
+  if(found) return found.id;
+  const created = await gistApi('POST', '/gists', {
+    description: GIST_DESC,
+    public: false,
+    files: { [GIST_FILENAME]: { content: JSON.stringify(buildSyncDoc()) } }
+  });
+  return created.id;
+}
+
+// Pull remote data; for each affiliate keep whichever side is newer.
+// Returns true if anything local changed.
+async function pullFromCloud(){
+  if(!cloudToken || !cloudGistId) return false;
+  const gist = await gistApi('GET', '/gists/' + cloudGistId);
+  const file = gist.files && gist.files[GIST_FILENAME];
+  if(!file) return false;
+  let content = file.content;
+  if(file.truncated && file.raw_url){
+    const res = await fetch(file.raw_url);
+    if(!res.ok) throw new Error('Could not download sync data (' + res.status + ')');
+    content = await res.text();
+  }
+  let doc;
+  try{ doc = JSON.parse(content); }catch(e){ return false; }
+  if(!doc || !doc.affiliates) return false;
+  let changed = false;
+  for(const a of AFFILIATES){
+    const remote = doc.affiliates[a.key];
+    if(!remote || !remote.data) continue;
+    if((remote.updatedAt || 0) > (metaUpdatedAt[a.key] || 0)){
+      store[a.key] = {
+        workbookData: remote.data.workbookData || {},
+        periodOrder: remote.data.periodOrder || [],
+        trackerState: remote.data.trackerState || {},
+        currentPeriod: remote.data.currentPeriod || null
+      };
+      metaUpdatedAt[a.key] = remote.updatedAt || 0;
+      try{
+        await storageBackend.set(storageKey(a.key), JSON.stringify(store[a.key]), false);
+        await storageBackend.set(META_KEY, JSON.stringify(metaUpdatedAt), false);
+      }catch(e){ console.error('Local cache write failed', e); }
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+// Debounce pushes so typing in a remarks box doesn't spam the API.
+function schedulePush(){
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(doPush, 1500);
+}
+
+async function doPush(){
+  if(!cloudToken) return;
+  if(pushing){ pushQueued = true; return; }
+  pushing = true;
+  setSyncStatus('syncing');
+  try{
+    if(!cloudGistId){
+      cloudGistId = await findOrCreateGist();
+      await storageBackend.set(GISTID_KEY, cloudGistId, false);
+    }
+    // Merge in anything newer from other devices before overwriting.
+    const changed = await pullFromCloud();
+    await gistApi('PATCH', '/gists/' + cloudGistId, {
+      files: { [GIST_FILENAME]: { content: JSON.stringify(buildSyncDoc()) } }
+    });
+    setSyncStatus('idle');
+    if(changed) renderAll();
+  }catch(e){
+    if(e.status === 404 && cloudGistId){
+      // The gist was deleted on GitHub — recreate it on the next push.
+      cloudGistId = '';
+      try{ await storageBackend.set(GISTID_KEY, '', false); }catch(_){}
+      pushing = false;
+      schedulePush();
+      return;
+    }
+    console.error('Cloud push failed', e);
+    setSyncStatus('error');
+  }finally{
+    pushing = false;
+    if(pushQueued){ pushQueued = false; schedulePush(); }
   }
 }
+
+async function checkForRemoteChanges(){
+  if(!cloudToken || pushing) return;
+  try{
+    const changed = await pullFromCloud();
+    if(changed) renderAll();
+  }catch(e){ /* transient network issue — next check will retry */ }
+}
+
+/* ---------- Sync setup dialog ---------- */
+function updateSyncBtn(){
+  const btn = document.getElementById('syncBtn');
+  btn.textContent = cloudToken ? 'Cloud Sync: On' : 'Enable Cloud Sync';
+}
+
+function openSyncModal(){
+  const body = document.getElementById('syncModalBody');
+  if(cloudToken){
+    body.innerHTML = `
+      <p>Cloud sync is <b style="color:var(--st-newhire);">ON</b>. Every change saves automatically to a secret Gist on your GitHub account, and any device using the same token stays up to date.</p>
+      <p><b>To add another device:</b> open this tracker there, click "Enable Cloud Sync", and paste the <b>same GitHub token</b> you used here.</p>
+      <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
+        <button class="btn btn-gold" id="syncNowBtn">Sync Now</button>
+        <button class="btn" id="syncCloseBtn">Close</button>
+        <button class="btn" id="syncDisconnectBtn" style="margin-left:auto;color:var(--st-separation);">Turn Off on This Device</button>
+      </div>`;
+    document.getElementById('syncNowBtn').addEventListener('click', async () => {
+      setSyncStatus('syncing');
+      try{ const changed = await pullFromCloud(); await doPush(); if(changed) renderAll(); }
+      catch(e){ setSyncStatus('error'); }
+      closeSyncModal();
+    });
+    document.getElementById('syncDisconnectBtn').addEventListener('click', async () => {
+      if(!confirm('Turn off cloud sync on this device? Your data stays here and in the cloud — this device just stops syncing until you paste the token again.')) return;
+      cloudToken = ''; cloudGistId = '';
+      try{
+        await storageBackend.set(TOKEN_KEY, '', false);
+        await storageBackend.set(GISTID_KEY, '', false);
+      }catch(e){}
+      updateSyncBtn();
+      setSyncStatus('idle');
+      closeSyncModal();
+    });
+    document.getElementById('syncCloseBtn').addEventListener('click', closeSyncModal);
+  } else {
+    body.innerHTML = `
+      <p>Turn this on to keep the tracker identical on every device you use (office PC, laptop, phone). Your data is stored in a <b>secret Gist</b> on your own GitHub account — free, private to your account, nothing to install.</p>
+      <b style="color:var(--text-hi);">One-time setup (about 2 minutes):</b>
+      <ol style="margin:8px 0 14px;padding-left:20px;">
+        <li>Sign in to <b>github.com</b>.</li>
+        <li>Open <a href="https://github.com/settings/tokens/new?scopes=gist&description=Cut-off%20Tracker%20Sync" target="_blank" rel="noopener" style="color:var(--gold);font-weight:600;">this token page</a> — the "gist" permission is already ticked for you.</li>
+        <li>Set <b>Expiration</b> to <b>No expiration</b>, then click the green <b>Generate token</b> button at the bottom.</li>
+        <li>Copy the token (it starts with <code>ghp_</code>) and paste it below. Keep a copy somewhere safe — you'll paste the same token on your other devices.</li>
+      </ol>
+      <input type="password" id="tokenInput" placeholder="Paste your GitHub token here (ghp_...)" style="width:100%;padding:10px 12px;border:1px solid var(--navy-600);border-radius:7px;background:var(--navy-800);color:var(--text-hi);font-size:13px;font-family:'Inter',sans-serif;">
+      <div id="tokenError" style="color:var(--st-separation);font-size:12.5px;margin-top:8px;display:none;"></div>
+      <div style="display:flex;gap:10px;margin-top:16px;">
+        <button class="btn btn-gold" id="tokenConnectBtn">Connect &amp; Sync</button>
+        <button class="btn" id="syncCancelBtn">Cancel</button>
+      </div>`;
+    document.getElementById('tokenConnectBtn').addEventListener('click', connectCloud);
+    document.getElementById('tokenInput').addEventListener('keydown', e => { if(e.key === 'Enter') connectCloud(); });
+    document.getElementById('syncCancelBtn').addEventListener('click', closeSyncModal);
+  }
+  document.getElementById('syncModal').style.display = 'flex';
+  const input = document.getElementById('tokenInput');
+  if(input) input.focus();
+}
+
+function closeSyncModal(){
+  document.getElementById('syncModal').style.display = 'none';
+}
+
+async function connectCloud(){
+  const input = document.getElementById('tokenInput');
+  const errEl = document.getElementById('tokenError');
+  const token = (input.value || '').trim();
+  if(!token){ errEl.style.display = 'block'; errEl.textContent = 'Paste the token first.'; return; }
+  const btn = document.getElementById('tokenConnectBtn');
+  btn.disabled = true; btn.textContent = 'Connecting…';
+  cloudToken = token;
+  try{
+    cloudGistId = await findOrCreateGist();
+    await storageBackend.set(TOKEN_KEY, cloudToken, false);
+    await storageBackend.set(GISTID_KEY, cloudGistId, false);
+    const changed = await pullFromCloud();
+    schedulePush();               // upload this device's data (already merged)
+    updateSyncBtn();
+    setSyncStatus('idle');
+    closeSyncModal();
+    if(changed) renderAll();
+  }catch(e){
+    cloudToken = ''; cloudGistId = '';
+    errEl.style.display = 'block';
+    errEl.textContent = e.status === 401
+      ? 'GitHub rejected that token. Make sure you copied the whole token and that the "gist" box was ticked when you generated it.'
+      : 'Could not connect (' + (e.message || 'network error') + '). Check your internet connection and try again.';
+    btn.disabled = false; btn.textContent = 'Connect & Sync';
+  }
+}
+
+document.getElementById('syncBtn').addEventListener('click', openSyncModal);
+document.getElementById('syncModal').addEventListener('click', function(e){
+  if(e.target === this) closeSyncModal();
+});
+
+// Pick up edits made on other devices when returning to this tab, plus a gentle background check.
+window.addEventListener('focus', checkForRemoteChanges);
+setInterval(checkForRemoteChanges, 60000);
 
 function guessStatus(remarksOriginal){
   if(!remarksOriginal) return 'Active';
@@ -1042,6 +1313,31 @@ document.getElementById('exportBtn').addEventListener('click', function(){
 
 (async function init(){
   await loadFromStorage();
+  try{
+    const t = await storageBackend.get(TOKEN_KEY, false);
+    if(t && t.value) cloudToken = t.value;
+    const g = await storageBackend.get(GISTID_KEY, false);
+    if(g && g.value) cloudGistId = g.value;
+    const m = await storageBackend.get(META_KEY, false);
+    if(m && m.value) metaUpdatedAt = JSON.parse(m.value) || {};
+  }catch(e){ /* nothing saved yet */ }
+  updateSyncBtn();
+  if(cloudToken){
+    setSyncStatus('syncing');
+    try{
+      if(!cloudGistId){
+        cloudGistId = await findOrCreateGist();
+        await storageBackend.set(GISTID_KEY, cloudGistId, false);
+      }
+      await pullFromCloud();
+      setSyncStatus('idle');
+    }catch(e){
+      console.error('Initial cloud pull failed', e);
+      setSyncStatus('error');
+    }
+  } else {
+    setSyncStatus('idle');
+  }
   renderAll();
 })();
 </script>
