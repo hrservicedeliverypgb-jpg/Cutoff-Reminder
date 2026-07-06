@@ -454,7 +454,7 @@
 </div>
 
 <div class="footer-note" id="footerNote"></div>
-<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.4 — make-up schedule</div>
+<div style="text-align:center;font-size:10px;color:var(--text-dim);margin-top:6px;">version 2026-07-06.5 — make-up schedule</div>
 
 <div id="pickModal" style="display:none;position:fixed;inset:0;background:rgba(42,32,24,0.45);z-index:50;align-items:center;justify-content:center;">
   <div style="background:var(--navy-900);border:1px solid var(--navy-600);border-radius:12px;max-width:560px;width:92%;padding:24px 28px;max-height:85vh;overflow-y:auto;box-shadow:0 12px 40px rgba(42,32,24,0.25);">
@@ -1436,7 +1436,7 @@ function renderMakeupView(){
     const tr = document.createElement('tr');
     const cells = mu.dates.map(d => {
       const on = !!(row.present && row.present[d.makeup]);
-      return `<td style="text-align:center;"><button class="logs-toggle mu-present ${on ? 'checked' : ''}" data-key="${d.makeup.replace(/"/g,'&quot;')}" style="width:auto;padding:6px 10px;">${on ? '✓ Present' : '—'}</button></td>`;
+      return `<td style="text-align:center;"><button class="logs-toggle mu-present ${on ? 'checked' : ''}" data-key="${d.makeup.replace(/"/g,'&quot;')}" style="width:auto;padding:6px 12px;white-space:nowrap;">${on ? '&#10003; Present' : 'Mark present'}</button></td>`;
     }).join('');
     tr.innerHTML = `
       <td>${ri + 1}</td>
