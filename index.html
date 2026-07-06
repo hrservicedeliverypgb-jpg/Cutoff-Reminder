@@ -30,6 +30,8 @@
     --st-maternity-bg:#faf1da;
     --st-nologs:#6b6b73;
     --st-nologs-bg:#eeeeee;
+    --st-transfer:#4a5ec4;
+    --st-transfer-bg:#e8ecfa;
     --logs-checked:#0f7a7a;
     --logs-checked-bg:#e0f5f5;
   }
@@ -168,7 +170,7 @@
 
   .stats-row{
     display:grid;
-    grid-template-columns:repeat(6,1fr);
+    grid-template-columns:repeat(auto-fit,minmax(130px,1fr));
     gap:12px;
     margin-bottom:22px;
   }
@@ -185,7 +187,62 @@
   .stat-card.separation .stat-num{color:var(--st-separation);}
   .stat-card.maternity .stat-num{color:var(--st-maternity);}
   .stat-card.nologs .stat-num{color:var(--st-nologs);}
+  .stat-card.transfer .stat-num{color:var(--st-transfer);}
   .stat-card.pending .stat-num{color:var(--aff);}
+
+  /* Dashboard affiliate cards */
+  .aff-cards{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+    gap:14px;
+    margin-bottom:10px;
+  }
+  .aff-card{
+    background:var(--navy-900);
+    border:1px solid var(--navy-700);
+    border-top:4px solid var(--acc,var(--gold));
+    border-radius:12px;
+    padding:16px 18px 12px;
+    cursor:pointer;
+    transition:all .15s ease;
+    box-shadow:0 1px 3px rgba(42,32,24,0.06);
+  }
+  .aff-card:hover{
+    border-color:var(--acc,var(--gold));
+    box-shadow:0 6px 18px rgba(42,32,24,0.12);
+    transform:translateY(-2px);
+  }
+  .aff-card-name{
+    font-family:'Playfair Display',serif;
+    font-size:19px;
+    font-weight:700;
+    color:var(--text-hi);
+  }
+  .aff-card-period{
+    font-size:11.5px;
+    color:var(--text-dim);
+    margin:2px 0 10px;
+  }
+  .aff-card-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:12.5px;
+    color:var(--text-mid);
+    padding:4px 0;
+    border-bottom:1px dashed var(--navy-800);
+  }
+  .aff-card-row:last-child{border-bottom:none;}
+  .aff-card-row b{font-size:13.5px;}
+  .aff-card-open{
+    margin-top:10px;
+    font-size:11px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--acc,var(--gold));
+    text-align:right;
+  }
 
   .toolbar{
     display:flex;
@@ -276,11 +333,13 @@
   tr.status-separation td.status-cell select{border-color:var(--st-separation); color:var(--st-separation);}
   tr.status-maternity td.status-cell select{border-color:var(--st-maternity); color:var(--st-maternity);}
   tr.status-nologs td.status-cell select{border-color:var(--st-nologs); color:var(--st-nologs);}
+  tr.status-transfer td.status-cell select{border-color:var(--st-transfer); color:var(--st-transfer);}
 
   tr.status-newhire{background:var(--st-newhire-bg);}
   tr.status-separation{background:var(--st-separation-bg);}
   tr.status-maternity{background:var(--st-maternity-bg);}
   tr.status-nologs{background:var(--st-nologs-bg);}
+  tr.status-transfer{background:var(--st-transfer-bg);}
 
   .remarks-input{
     background:transparent;
@@ -356,6 +415,7 @@
   <div class="stat-card newhire"><div class="stat-num" id="statNewHire">0</div><div class="stat-label">New Hire</div></div>
   <div class="stat-card separation"><div class="stat-num" id="statSeparation">0</div><div class="stat-label">Separation</div></div>
   <div class="stat-card maternity"><div class="stat-num" id="statMaternity">0</div><div class="stat-label">Maternity</div></div>
+  <div class="stat-card transfer"><div class="stat-num" id="statTransfer">0</div><div class="stat-label">Transfer</div></div>
   <div class="stat-card nologs"><div class="stat-num" id="statNoLogs">0</div><div class="stat-label">No Logs</div></div>
   <div class="stat-card pending"><div class="stat-num" id="statPending">0</div><div class="stat-label">Logs Pending</div></div>
 </div>
@@ -368,6 +428,7 @@
     <button class="pill" data-filter="New Hire">New Hire</button>
     <button class="pill" data-filter="Separation">Separation</button>
     <button class="pill" data-filter="Maternity">Maternity</button>
+    <button class="pill" data-filter="Transfer">Transfer</button>
     <button class="pill" data-filter="No Logs">No Logs</button>
     <button class="pill" data-filter="__pending">Logs Pending</button>
   </div>
@@ -391,7 +452,7 @@
 </div>
 
 <script>
-const STATUS_LIST = ['Active','New Hire','Separation','Maternity','No Logs'];
+const STATUS_LIST = ['Active','New Hire','Separation','Maternity','Transfer','No Logs'];
 
 // Affiliate config: name -> accent color (kept consistent with existing PGB affiliate color coding where established)
 const AFFILIATES = [
@@ -764,6 +825,7 @@ function guessStatus(remarksOriginal){
   const r = remarksOriginal.toLowerCase();
   if(r.includes('resign') || r.includes('separat') || r.includes('end of contract') || r.includes('eoc')) return 'Separation';
   if(r.includes('matern')) return 'Maternity';
+  if(r.includes('transfer')) return 'Transfer';
   if(r.includes('no log')) return 'No Logs';
   return 'Active';
 }
@@ -851,7 +913,7 @@ function getAffiliateCounts(affKey){
   if(!aff.currentPeriod) return null;
   const rows = aff.workbookData[aff.currentPeriod];
   const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
-  const counts = {period: aff.currentPeriod, total: rows.length, active:0, newhire:0, separation:0, maternity:0, nologs:0, pending:0};
+  const counts = {period: aff.currentPeriod, total: rows.length, active:0, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
   rows.forEach(r => {
     const st = stateForPeriod[r.idno];
     if(!st) return;
@@ -859,6 +921,7 @@ function getAffiliateCounts(affKey){
     if(st.status === 'New Hire') counts.newhire++;
     if(st.status === 'Separation') counts.separation++;
     if(st.status === 'Maternity') counts.maternity++;
+    if(st.status === 'Transfer') counts.transfer++;
     if(st.status === 'No Logs') counts.nologs++;
     if(!st.logsChecked) counts.pending++;
   });
@@ -956,8 +1019,7 @@ function renderAll(){
   applyAffiliateTheme();
   if(currentAffiliate === DASHBOARD_KEY){
     document.getElementById('periodBar').innerHTML = '';
-    document.getElementById('toolbar').style.display = 'flex';
-    document.getElementById('addEmployeeBtn').style.display = 'none';
+    document.getElementById('toolbar').style.display = 'none';
     renderDashboardView();
   } else {
     document.getElementById('addEmployeeBtn').style.display = 'inline-block';
@@ -1004,168 +1066,77 @@ function renderAffiliateBar(){
 function renderDashboardView(){
   document.getElementById('statsRow').style.display = 'grid';
 
-  let grand = {total:0, newhire:0, separation:0, maternity:0, nologs:0, pending:0};
-  const summaryRowsHtml = AFFILIATES.map(a => {
+  let grand = {total:0, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
+
+  const cardsWrap = document.createElement('div');
+  cardsWrap.className = 'aff-cards';
+
+  AFFILIATES.forEach(a => {
     const c = getAffiliateCounts(a.key);
     if(c){
       grand.total += c.total;
       grand.newhire += c.newhire;
       grand.separation += c.separation;
       grand.maternity += c.maternity;
+      grand.transfer += c.transfer;
       grand.nologs += c.nologs;
       grand.pending += c.pending;
     }
-    const cell = (v) => c ? v : '—';
-    return `
-      <tr class="dashboard-row" data-aff="${a.key}" style="cursor:pointer;">
-        <td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${a.color};margin-right:9px;vertical-align:middle;"></span><span class="name-cell">${a.key}</span></td>
-        <td>${c ? c.period : 'No data yet'}</td>
-        <td style="font-weight:700;">${cell(c && c.total)}</td>
-        <td>${cell(c && c.active)}</td>
-        <td style="color:var(--st-newhire);font-weight:600;">${cell(c && c.newhire)}</td>
-        <td style="color:var(--st-separation);font-weight:600;">${cell(c && c.separation)}</td>
-        <td style="color:var(--st-maternity);font-weight:600;">${cell(c && c.maternity)}</td>
-        <td style="color:var(--st-nologs);font-weight:600;">${cell(c && c.nologs)}</td>
-        <td style="color:var(--aff);font-weight:700;">${cell(c && c.pending)}</td>
-      </tr>
-    `;
-  }).join('');
+    const card = document.createElement('div');
+    card.className = 'aff-card';
+    card.style.setProperty('--acc', a.color);
+    if(c){
+      card.innerHTML = `
+        <div class="aff-card-name"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${a.color};margin-right:8px;"></span>${a.key}</div>
+        <div class="aff-card-period">${c.period}</div>
+        <div class="aff-card-row"><span>Total Staff</span><b style="color:var(--text-hi);">${c.total}</b></div>
+        <div class="aff-card-row"><span>Active</span><b style="color:var(--text-mid);">${c.active}</b></div>
+        <div class="aff-card-row"><span>New Hire</span><b style="color:var(--st-newhire);">${c.newhire}</b></div>
+        <div class="aff-card-row"><span>Separation</span><b style="color:var(--st-separation);">${c.separation}</b></div>
+        <div class="aff-card-row"><span>Maternity</span><b style="color:var(--st-maternity);">${c.maternity}</b></div>
+        <div class="aff-card-row"><span>Transfer</span><b style="color:var(--st-transfer);">${c.transfer}</b></div>
+        <div class="aff-card-row"><span>No Logs</span><b style="color:var(--st-nologs);">${c.nologs}</b></div>
+        <div class="aff-card-row"><span>Logs Pending</span><b style="color:${a.color};">${c.pending}</b></div>
+        <div class="aff-card-open">Open tracker →</div>
+      `;
+    } else {
+      card.innerHTML = `
+        <div class="aff-card-name"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${a.color};margin-right:8px;"></span>${a.key}</div>
+        <div class="aff-card-period">No data yet</div>
+        <div style="font-size:12.5px;color:var(--text-dim);padding:8px 0 12px;">Import this affiliate's cut-off workbook to see its headcount here.</div>
+        <div class="aff-card-open">Open tracker →</div>
+      `;
+    }
+    card.addEventListener('click', () => {
+      currentAffiliate = a.key;
+      currentFilter = 'all';
+      searchTerm = '';
+      document.getElementById('searchBox').value = '';
+      document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+      document.querySelector('.pill[data-filter="all"]').classList.add('active');
+      renderAll();
+    });
+    cardsWrap.appendChild(card);
+  });
 
   document.getElementById('statTotal').textContent = grand.total;
   document.getElementById('statNewHire').textContent = grand.newhire;
   document.getElementById('statSeparation').textContent = grand.separation;
   document.getElementById('statMaternity').textContent = grand.maternity;
+  document.getElementById('statTransfer').textContent = grand.transfer;
   document.getElementById('statNoLogs').textContent = grand.nologs;
   document.getElementById('statPending').textContent = grand.pending;
-
-  const summaryTable = document.createElement('table');
-  summaryTable.innerHTML = `
-    <thead>
-      <tr>
-        <th>Affiliate</th>
-        <th>Latest Cut-off</th>
-        <th>Total HC</th>
-        <th>Active</th>
-        <th>New Hire</th>
-        <th>Separation</th>
-        <th>Maternity</th>
-        <th>No Logs</th>
-        <th>Logs Pending</th>
-      </tr>
-    </thead>
-    <tbody>${summaryRowsHtml}</tbody>
-  `;
-  summaryTable.querySelectorAll('.dashboard-row').forEach(tr => {
-    tr.addEventListener('click', () => {
-      currentAffiliate = tr.dataset.aff;
-      currentFilter = 'all';
-      searchTerm = '';
-      renderAll();
-    });
-  });
-
-  // Build the consolidated record list across every affiliate's latest cut-off
-  let combined = [];
-  AFFILIATES.forEach(a => {
-    const aff = store[a.key];
-    if(!aff.currentPeriod) return;
-    const rows = aff.workbookData[aff.currentPeriod] || [];
-    const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
-    rows.forEach(r => {
-      if(!stateForPeriod[r.idno]){
-        stateForPeriod[r.idno] = {status: guessStatus(r.remarksOriginal), logsChecked:false, remarks:r.remarksOriginal||''};
-      }
-      combined.push({affKey:a.key, affColor:a.color, period:aff.currentPeriod, row:r, state:stateForPeriod[r.idno]});
-    });
-  });
-
-  const filtered = combined.filter(item => {
-    if(searchTerm){
-      const hay = (item.row.lastname + ' ' + item.row.firstname + ' ' + item.row.idno + ' ' + item.affKey).toLowerCase();
-      if(!hay.includes(searchTerm.toLowerCase())) return false;
-    }
-    if(currentFilter === 'all') return true;
-    if(currentFilter === '__pending') return !item.state.logsChecked;
-    return item.state.status === currentFilter;
-  });
-
-  const recordsTable = document.createElement('table');
-  recordsTable.innerHTML = `
-    <thead>
-      <tr>
-        <th>Affiliate</th>
-        <th>ID No.</th>
-        <th>Name</th>
-        <th>Status</th>
-        <th>Remarks</th>
-        <th>Logs Checked</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  `;
-  const tbody = recordsTable.querySelector('tbody');
-
-  filtered.forEach(item => {
-    const { affKey, affColor, period, row, state } = item;
-    const tr = document.createElement('tr');
-    const statusClass = state.status === 'New Hire' ? 'status-newhire'
-      : state.status === 'Separation' ? 'status-separation'
-      : state.status === 'Maternity' ? 'status-maternity'
-      : state.status === 'No Logs' ? 'status-nologs' : '';
-    tr.className = statusClass;
-
-    const flaggedNew = isNewHireFlagged(affKey, period, row.idno);
-
-    tr.innerHTML = `
-      <td><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${affColor};margin-right:8px;vertical-align:middle;"></span>${affKey}</td>
-      <td>${row.idno}</td>
-      <td class="name-cell">${row.lastname}, ${row.firstname} ${flaggedNew ? '<span class="newhire-badge">New this cut-off</span>' : ''}</td>
-      <td class="status-cell">
-        <select class="status-select">
-          ${STATUS_LIST.map(s => `<option value="${s}" ${s===state.status?'selected':''}>${s}</option>`).join('')}
-        </select>
-      </td>
-      <td><input type="text" class="remarks-input" value="${(state.remarks||'').replace(/"/g,'&quot;')}" placeholder="Add a note..."></td>
-      <td class="logs-cell"><button class="logs-toggle ${state.logsChecked?'checked':''}">${state.logsChecked ? 'Checked' : 'Pending'}</button></td>
-    `;
-
-    tr.querySelector('.status-select').addEventListener('change', function(e){
-      state.status = e.target.value;
-      store[affKey].trackerState[period][row.idno] = state;
-      saveAffiliate(affKey);
-      renderDashboardView();
-    });
-    tr.querySelector('.remarks-input').addEventListener('input', function(e){
-      state.remarks = e.target.value;
-      store[affKey].trackerState[period][row.idno] = state;
-      saveAffiliate(affKey);
-    });
-    tr.querySelector('.logs-toggle').addEventListener('click', function(){
-      state.logsChecked = !state.logsChecked;
-      store[affKey].trackerState[period][row.idno] = state;
-      saveAffiliate(affKey);
-      renderDashboardView();
-    });
-
-    tbody.appendChild(tr);
-  });
 
   const wrap = document.getElementById('tableWrap');
   wrap.innerHTML = '';
   const heading1 = document.createElement('div');
-  heading1.style.cssText = 'font-family:Playfair Display,serif;font-size:16px;font-weight:700;color:var(--text-hi);margin:4px 0 10px;';
+  heading1.style.cssText = 'font-family:Playfair Display,serif;font-size:16px;font-weight:700;color:var(--text-hi);margin:4px 0 12px;';
   heading1.textContent = 'Headcount by Status — All Affiliates';
   wrap.appendChild(heading1);
-  wrap.appendChild(summaryTable);
-
-  const heading2 = document.createElement('div');
-  heading2.style.cssText = 'font-family:Playfair Display,serif;font-size:16px;font-weight:700;color:var(--text-hi);margin:26px 0 10px;';
-  heading2.textContent = `All Records — Every Affiliate (${filtered.length} of ${combined.length})`;
-  wrap.appendChild(heading2);
-  wrap.appendChild(recordsTable);
+  wrap.appendChild(cardsWrap);
 
   document.getElementById('footerNote').textContent =
-    `Click an affiliate row above to open its full tracker. Editing a record below saves directly to that affiliate's current cut-off.`;
+    `Click an affiliate card to open its full tracker.`;
 }
 
 function renderPeriodBar(){
@@ -1272,13 +1243,14 @@ function renderStatsAndTable(){
   const rows = aff.workbookData[aff.currentPeriod];
   const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
 
-  let counts = {total: rows.length, newhire:0, separation:0, maternity:0, nologs:0, pending:0};
+  let counts = {total: rows.length, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
   rows.forEach(r => {
     const st = stateForPeriod[r.idno];
     if(!st) return;
     if(st.status === 'New Hire') counts.newhire++;
     if(st.status === 'Separation') counts.separation++;
     if(st.status === 'Maternity') counts.maternity++;
+    if(st.status === 'Transfer') counts.transfer++;
     if(st.status === 'No Logs') counts.nologs++;
     if(!st.logsChecked) counts.pending++;
   });
@@ -1286,6 +1258,7 @@ function renderStatsAndTable(){
   document.getElementById('statNewHire').textContent = counts.newhire;
   document.getElementById('statSeparation').textContent = counts.separation;
   document.getElementById('statMaternity').textContent = counts.maternity;
+  document.getElementById('statTransfer').textContent = counts.transfer;
   document.getElementById('statNoLogs').textContent = counts.nologs;
   document.getElementById('statPending').textContent = counts.pending;
 
@@ -1327,6 +1300,7 @@ function renderStatsAndTable(){
     const statusClass = st.status === 'New Hire' ? 'status-newhire'
       : st.status === 'Separation' ? 'status-separation'
       : st.status === 'Maternity' ? 'status-maternity'
+      : st.status === 'Transfer' ? 'status-transfer'
       : st.status === 'No Logs' ? 'status-nologs' : '';
     tr.className = statusClass;
 
