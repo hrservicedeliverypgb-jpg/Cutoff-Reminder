@@ -35,6 +35,8 @@
     --st-transfer-bg:#e8ecfa;
     --logs-checked:#0f7a7a;
     --logs-checked-bg:#e0f5f5;
+    --remarks-flag-bg:#f6b9c4;
+    --remarks-flag-text:#8a1f30;
   }
   *{box-sizing:border-box;}
   body{
@@ -293,11 +295,12 @@
     border-collapse:collapse;
     background:var(--navy-900);
     border:1px solid var(--navy-700);
-    border-radius:10px;
-    overflow:hidden;
     box-shadow:0 1px 3px rgba(42,32,24,0.06);
   }
   thead th{
+    position:sticky;
+    top:0;
+    z-index:2;
     background:var(--navy-800);
     color:var(--aff);
     text-transform:uppercase;
@@ -307,7 +310,12 @@
     padding:12px 14px;
     text-align:left;
     border-bottom:1px solid var(--navy-600);
+    box-shadow:0 1px 0 var(--navy-600);
   }
+  thead th:first-child{border-top-left-radius:10px;}
+  thead th:last-child{border-top-right-radius:10px;}
+  tbody tr:last-child td:first-child{border-bottom-left-radius:10px;}
+  tbody tr:last-child td:last-child{border-bottom-right-radius:10px;}
   tbody td{
     padding:10px 14px;
     font-size:13px;
@@ -352,6 +360,11 @@
   tr.status-maternity{background:var(--st-maternity-bg);}
   tr.status-nologs{background:var(--st-nologs-bg);}
   tr.status-transfer{background:var(--st-transfer-bg);}
+
+  /* Remarks safety-net: flags rows whose free-text remarks mention resignation,
+     retirement, maternity, or no-logs even if the Status dropdown wasn't updated yet. */
+  tr.remarks-alert{background:var(--remarks-flag-bg) !important;}
+  tr.remarks-alert .name-cell{color:var(--remarks-flag-text) !important;}
 
   .remarks-input{
     background:transparent;
@@ -876,6 +889,13 @@ function guessStatus(remarksOriginal){
   if(r.includes('transfer')) return 'Transfer';
   if(r.includes('no log')) return 'No Logs';
   return 'Active';
+}
+
+// Flags a row red whenever its Remarks text mentions resignation, retirement,
+// maternity, or no-logs — regardless of what the Status dropdown is set to,
+// so these don't get missed while the status field is still catching up.
+function remarksNeedsAlert(remarks){
+  return /resign|retire|matern|no\s*log/i.test(remarks || '');
 }
 
 /* ---------- Flexible workbook parsing ----------
@@ -1737,6 +1757,7 @@ function renderStatsAndTable(){
       : st.status === 'Transfer' ? 'status-transfer'
       : st.status === 'No Logs' ? 'status-nologs' : '';
     tr.className = statusClass;
+    if(remarksNeedsAlert(st.remarks)) tr.classList.add('remarks-alert');
 
     const flaggedNew = isNewHireFlagged(currentAffiliate, aff.currentPeriod, r.idno);
 
@@ -1766,6 +1787,7 @@ function renderStatsAndTable(){
       st.remarks = e.target.value;
       stateForPeriod[r.idno] = st;
       aff.trackerState[aff.currentPeriod] = stateForPeriod;
+      tr.classList.toggle('remarks-alert', remarksNeedsAlert(st.remarks));
       saveAffiliate(currentAffiliate);
     });
     tr.querySelector('.logs-toggle').addEventListener('click', function(){
