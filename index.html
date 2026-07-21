@@ -47,6 +47,15 @@
     min-height:100vh;
     padding:32px 40px 80px;
   }
+  #stickyTop{
+    position:sticky;
+    top:0;
+    z-index:20;
+    background:var(--navy-900);
+    margin:-32px -40px 0;
+    padding:32px 40px 0;
+    box-shadow:0 4px 10px rgba(42,32,24,0.10);
+  }
   header{
     display:flex;
     justify-content:space-between;
@@ -299,7 +308,7 @@
   }
   thead th{
     position:sticky;
-    top:0;
+    top:var(--sticky-top-h, 0px);
     z-index:2;
     background:var(--navy-800);
     color:var(--aff);
@@ -416,6 +425,7 @@
 </head>
 <body>
 
+<div id="stickyTop">
 <header>
   <div>
     <div class="eyebrow">HR Service Delivery &middot; PGB</div>
@@ -458,6 +468,7 @@
     <button class="pill" data-filter="__pending">Logs Pending</button>
   </div>
   <button class="btn btn-gold" id="addEmployeeBtn">+ Add Employee</button>
+</div>
 </div>
 
 <div id="tableWrap">
@@ -880,6 +891,21 @@ document.getElementById('pickModal').addEventListener('click', function(e){
 // Pick up edits made on other devices when returning to this tab, plus a gentle background check.
 window.addEventListener('focus', checkForRemoteChanges);
 setInterval(checkForRemoteChanges, 60000);
+
+// The frozen top strip (title bar, affiliate tabs, period chips, stats, toolbar)
+// changes height as tabs wrap or rows show/hide, so the table header underneath
+// needs to know how far down to sit. ResizeObserver keeps that in sync automatically
+// no matter what caused the change, instead of recalculating after every render call.
+const stickyTopEl = document.getElementById('stickyTop');
+function updateStickyTopOffset(){
+  document.documentElement.style.setProperty('--sticky-top-h', stickyTopEl.getBoundingClientRect().height + 'px');
+}
+if(window.ResizeObserver){
+  new ResizeObserver(updateStickyTopOffset).observe(stickyTopEl);
+} else {
+  window.addEventListener('resize', updateStickyTopOffset);
+}
+updateStickyTopOffset();
 
 function guessStatus(remarksOriginal){
   if(!remarksOriginal) return 'Active';
