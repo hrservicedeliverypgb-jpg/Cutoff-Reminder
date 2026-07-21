@@ -1673,6 +1673,7 @@ function renderStatsAndTable(){
   }
 
   const rows = aff.workbookData[aff.currentPeriod];
+  sortRowsByLastName(rows);
   const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
 
   let counts = {total: rows.length, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
