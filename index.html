@@ -1609,6 +1609,17 @@ function addNewPeriod(affKey){
   renderAll();
 }
 
+// Keeps a cut-off's row order alphabetical by last name (then first name),
+// and renumbers the "No." column to match so it doesn't look scrambled.
+function sortRowsByLastName(rows){
+  rows.sort((a, b) => {
+    const byLast = (a.lastname||'').localeCompare(b.lastname||'', undefined, {sensitivity:'base'});
+    if(byLast !== 0) return byLast;
+    return (a.firstname||'').localeCompare(b.firstname||'', undefined, {sensitivity:'base'});
+  });
+  rows.forEach((r, i) => { r.no = i + 1; });
+}
+
 function addEmployeeRow(){
   const aff = store[currentAffiliate];
   if(!aff.currentPeriod){ alert('Add or import a cut-off first.'); return; }
@@ -1623,9 +1634,9 @@ function addEmployeeRow(){
   }
   const lastname = prompt('Last Name:', '') || '';
   const firstname = prompt('First Name:', '') || '';
-  const maxNo = rows.reduce((m,r) => Math.max(m, Number(r.no)||0), 0);
-  const newRow = { no:maxNo+1, location, idno:idnoTrim, lastname, firstname, remarksOriginal:'' };
+  const newRow = { no:0, location, idno:idnoTrim, lastname, firstname, remarksOriginal:'' };
   rows.push(newRow);
+  sortRowsByLastName(rows);
   aff.trackerState[aff.currentPeriod][idnoTrim] = { status:'New Hire', logsChecked:false, remarks:'' };
   saveAffiliate(currentAffiliate);
   renderStatsAndTable();
