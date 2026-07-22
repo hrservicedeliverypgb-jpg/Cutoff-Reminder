@@ -1647,8 +1647,17 @@ function addNewPeriod(affKey){
   aff.workbookData[trimmed] = carriedRows;
   aff.periodOrder.push(trimmed);
   aff.trackerState[trimmed] = {};
+  const prevState = aff.trackerState[lastPeriod] || {};
   carriedRows.forEach(r => {
-    aff.trackerState[trimmed][r.idno] = { status:'Active', logsChecked:false, remarks:'' };
+    const prev = prevState[r.idno];
+    // Carry each employee's Status and Remarks into the new cut-off (e.g. an
+    // ongoing Maternity case shouldn't silently reset to Active). Logs Checked
+    // always starts fresh since it's a per-cut-off verification, not a status.
+    aff.trackerState[trimmed][r.idno] = {
+      status: prev ? prev.status : 'Active',
+      logsChecked: false,
+      remarks: prev ? prev.remarks : ''
+    };
   });
   aff.currentPeriod = trimmed;
   saveAffiliate(affKey);
