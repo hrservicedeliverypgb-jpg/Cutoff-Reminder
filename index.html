@@ -307,9 +307,6 @@
     box-shadow:0 1px 3px rgba(42,32,24,0.06);
   }
   thead th{
-    position:sticky;
-    top:var(--sticky-top-h, 0px);
-    z-index:2;
     background:var(--navy-800);
     color:var(--aff);
     text-transform:uppercase;
@@ -319,6 +316,14 @@
     padding:12px 14px;
     text-align:left;
     border-bottom:1px solid var(--navy-600);
+  }
+  /* Sticky header is scoped to the main tracker table only — the make-up
+     schedule table sits in a horizontally-scrolling wrapper, where a sticky
+     thead renders in the wrong place instead of the intended one. */
+  .tracker-table thead th{
+    position:sticky;
+    top:var(--sticky-top-h, 0px);
+    z-index:2;
     box-shadow:0 1px 0 var(--navy-600);
   }
   thead th:first-child{border-top-left-radius:10px;}
@@ -1844,6 +1849,7 @@ function renderStatsAndTable(){
   });
 
   const table = document.createElement('table');
+  table.className = 'tracker-table';
   table.innerHTML = `
     <thead>
       <tr>
