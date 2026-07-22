@@ -507,6 +507,14 @@ const AFFILIATES = [
   { key:'PSEFI', color:'#a44f77' }   // rose
 ];
 
+// Some affiliates split their roster into named sub-groups (mirrors how their
+// source workbooks lay out a bare-name divider row between groups, e.g. a
+// "RANKS" row in PHI's sheet). The first entry is the default/unmarked group.
+const AFFILIATE_SECTIONS = {
+  PHI: ['Staff', 'Ranks'],
+  PPC: ['PPC', 'MC123', 'EPICS']
+};
+
 const DASHBOARD_KEY = '__dashboard__';
 const MAKEUP_KEY = '__makeup__';
 let currentAffiliate = DASHBOARD_KEY;
@@ -975,18 +983,27 @@ function parseSheet(ws){
   if(headerRowIdx === -1) return null;
 
   const rows = [];
+  // Some sheets divide the roster into named sub-groups using a bare row that
+  // has only one filled-in cell (e.g. "RANKS", "MC123") with no ID No. — treat
+  // that as a section divider for every employee row that follows it.
+  let currentSection = null;
   for(let i = headerRowIdx + 1; i < grid.length; i++){
     const row = grid[i] || [];
     const get = k => (k in colMap && row[colMap[k]] !== undefined) ? row[colMap[k]] : null;
     const idno = get('idno');
-    if(idno === null || String(idno).trim() === '') continue;
+    if(idno === null || String(idno).trim() === ''){
+      const filled = row.filter(c => c !== null && c !== undefined && String(c).trim() !== '');
+      if(filled.length === 1) currentSection = String(filled[0]).trim();
+      continue;
+    }
     rows.push({
       no: get('no'),
       location: get('location') !== null ? String(get('location')).trim() : '',
       idno: String(idno).trim(),
       lastname: get('lastname') !== null ? String(get('lastname')).trim() : '',
       firstname: get('firstname') !== null ? String(get('firstname')).trim() : '',
-      remarksOriginal: get('remarks') !== null ? String(get('remarks')).trim() : ''
+      remarksOriginal: get('remarks') !== null ? String(get('remarks')).trim() : '',
+      section: currentSection
     });
   }
   return rows;
@@ -1642,7 +1659,7 @@ function addNewPeriod(affKey){
   }
   const lastPeriod = aff.periodOrder[aff.periodOrder.length-1];
   const carriedRows = aff.workbookData[lastPeriod].map(r => ({
-    no: r.no, location: r.location, idno: r.idno, lastname: r.lastname, firstname: r.firstname, remarksOriginal: ''
+    no: r.no, location: r.location, idno: r.idno, lastname: r.lastname, firstname: r.firstname, remarksOriginal: '', section: r.section
   }));
   aff.workbookData[trimmed] = carriedRows;
   aff.periodOrder.push(trimmed);
@@ -1664,15 +1681,50 @@ function addNewPeriod(affKey){
   renderAll();
 }
 
-// Keeps a cut-off's row order alphabetical by last name (then first name),
-// and renumbers the "No." column to match so it doesn't look scrambled.
-function sortRowsByLastName(rows){
+// Where a row's section places it: unmarked rows always come first, then the
+// affiliate's configured sections in order, then any unrecognized section
+// name (kept together, sorted by its own name) — so imported text that
+// doesn't match the configured list still groups cleanly instead of
+// scattering alphabetically among unrelated people.
+function sectionRank(affKey, section){
+  const options = AFFILIATE_SECTIONS[affKey] || [];
+  if(!section) return {bucket:0, name:''};
+  const idx = options.indexOf(section);
+  return idx !== -1 ? {bucket:idx+1, name:section} : {bucket:options.length+1, name:section};
+}
+
+// Keeps a cut-off's row order grouped by section (for affiliates that have
+// one) and alphabetical by last name (then first name) within each group,
+// renumbering the "No." column per group so it doesn't look scrambled.
+function sortRowsBySection(rows, affKey){
   rows.sort((a, b) => {
+    const ra = sectionRank(affKey, a.section), rb = sectionRank(affKey, b.section);
+    if(ra.bucket !== rb.bucket) return ra.bucket - rb.bucket;
+    if(ra.name !== rb.name) return ra.name.localeCompare(rb.name, undefined, {sensitivity:'base'});
     const byLast = (a.lastname||'').localeCompare(b.lastname||'', undefined, {sensitivity:'base'});
     if(byLast !== 0) return byLast;
     return (a.firstname||'').localeCompare(b.firstname||'', undefined, {sensitivity:'base'});
   });
-  rows.forEach((r, i) => { r.no = i + 1; });
+  let counter = 0, lastKey = undefined;
+  rows.forEach(r => {
+    const key = sectionRank(affKey, r.section);
+    const groupKey = key.bucket + '|' + key.name;
+    if(groupKey !== lastKey){ counter = 0; lastKey = groupKey; }
+    counter++;
+    r.no = counter;
+  });
+}
+
+// Prompts for which named sub-group a new employee belongs to, for affiliates
+// that split their roster that way (e.g. PHI's Staff/Ranks, PPC's PPC/MC123/EPICS).
+// Returns null for affiliates with no configured sections.
+function pickSection(affKey){
+  const options = AFFILIATE_SECTIONS[affKey];
+  if(!options) return null;
+  const listText = options.map((s, i) => `${i+1}) ${s}`).join('\n');
+  const choice = prompt(`Section for ${affKey}:\n${listText}\n\nEnter the number:`, '1');
+  const idx = parseInt(choice, 10) - 1;
+  return (idx >= 0 && idx < options.length) ? options[idx] : options[0];
 }
 
 function addEmployeeRow(){
@@ -1689,9 +1741,10 @@ function addEmployeeRow(){
   }
   const lastname = prompt('Last Name:', '') || '';
   const firstname = prompt('First Name:', '') || '';
-  const newRow = { no:0, location, idno:idnoTrim, lastname, firstname, remarksOriginal:'' };
+  const section = pickSection(currentAffiliate);
+  const newRow = { no:0, location, idno:idnoTrim, lastname, firstname, remarksOriginal:'', section };
   rows.push(newRow);
-  sortRowsByLastName(rows);
+  sortRowsBySection(rows, currentAffiliate);
   aff.trackerState[aff.currentPeriod][idnoTrim] = { status:'New Hire', logsChecked:false, remarks:'' };
   saveAffiliate(currentAffiliate);
   renderStatsAndTable();
@@ -1728,7 +1781,7 @@ function renderStatsAndTable(){
   }
 
   const rows = aff.workbookData[aff.currentPeriod];
-  sortRowsByLastName(rows);
+  sortRowsBySection(rows, currentAffiliate);
   const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
 
   let counts = {total: rows.length, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
@@ -1780,7 +1833,19 @@ function renderStatsAndTable(){
   `;
   const tbody = table.querySelector('tbody');
 
+  const sectionOptions = AFFILIATE_SECTIONS[currentAffiliate];
+  let lastRenderedSection = undefined;
+
   visibleRows.forEach(r => {
+    if(sectionOptions){
+      const resolvedSection = r.section || sectionOptions[0];
+      if(resolvedSection !== lastRenderedSection){
+        const sectionTr = document.createElement('tr');
+        sectionTr.innerHTML = `<td colspan="8" style="background:var(--navy-800);color:var(--aff);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-size:11.5px;padding:8px 14px;">${resolvedSection}</td>`;
+        tbody.appendChild(sectionTr);
+        lastRenderedSection = resolvedSection;
+      }
+    }
     if(!stateForPeriod[r.idno]){
       stateForPeriod[r.idno] = {status: guessStatus(r.remarksOriginal), logsChecked:false, remarks:r.remarksOriginal||''};
     }
