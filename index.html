@@ -1628,10 +1628,25 @@ function renderPeriodBar(){
   bar.innerHTML = '';
   const aff = store[currentAffiliate];
   aff.periodOrder.forEach(p => {
-    const chip = document.createElement('button');
+    // A <div>, not a <button>, since it needs to hold its own delete button
+    // (a button can't nest another button).
+    const chip = document.createElement('div');
     chip.className = 'period-chip' + (p === aff.currentPeriod ? ' active' : '');
-    chip.textContent = p;
-    chip.addEventListener('click', () => { aff.currentPeriod = p; saveAffiliate(currentAffiliate); renderStatsAndTable(); renderPeriodBar(); });
+    chip.style.cssText = 'display:inline-flex; align-items:center; gap:8px;';
+
+    const label = document.createElement('span');
+    label.textContent = p;
+    label.style.cursor = 'pointer';
+    label.addEventListener('click', () => { aff.currentPeriod = p; saveAffiliate(currentAffiliate); renderStatsAndTable(); renderPeriodBar(); });
+    chip.appendChild(label);
+
+    const delBtn = document.createElement('button');
+    delBtn.textContent = '×';
+    delBtn.title = `Delete the "${p}" cut-off`;
+    delBtn.style.cssText = 'background:none; border:none; color:inherit; opacity:.55; cursor:pointer; font-size:14px; line-height:1; padding:0;';
+    delBtn.addEventListener('click', (e) => { e.stopPropagation(); deletePeriod(currentAffiliate, p); });
+    chip.appendChild(delBtn);
+
     bar.appendChild(chip);
   });
   const addChip = document.createElement('button');
@@ -1640,6 +1655,19 @@ function renderPeriodBar(){
   addChip.title = 'Add new cut-off';
   addChip.addEventListener('click', () => addNewPeriod(currentAffiliate));
   bar.appendChild(addChip);
+}
+
+function deletePeriod(affKey, periodName){
+  const aff = store[affKey];
+  if(!confirm(`Delete the "${periodName}" cut-off for ${affKey}? This removes all its employee data, statuses, and remarks — this cannot be undone.`)) return;
+  aff.periodOrder = aff.periodOrder.filter(p => p !== periodName);
+  delete aff.workbookData[periodName];
+  delete aff.trackerState[periodName];
+  if(aff.currentPeriod === periodName){
+    aff.currentPeriod = aff.periodOrder.length ? aff.periodOrder[aff.periodOrder.length - 1] : null;
+  }
+  saveAffiliate(affKey);
+  renderAll();
 }
 
 function addNewPeriod(affKey){
