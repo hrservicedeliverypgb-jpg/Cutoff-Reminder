@@ -524,6 +524,7 @@ const DASHBOARD_KEY = '__dashboard__';
 const MAKEUP_KEY = '__makeup__';
 let currentAffiliate = DASHBOARD_KEY;
 let makeupAffiliate = 'PHI';
+let muSelected = new Set(); // idnos ticked for bulk delete on the Dec Make-up tab, per affiliate shown
 
 // Default December make-up sessions (editable in the UI): each make-up
 // day covers one earlier missed date.
@@ -1466,11 +1467,15 @@ function renderMakeupView(){
     const chip = document.createElement('button');
     chip.className = 'period-chip' + (a.key === makeupAffiliate ? ' active' : '');
     chip.textContent = a.key;
-    chip.addEventListener('click', () => { makeupAffiliate = a.key; renderMakeupView(); });
+    chip.addEventListener('click', () => { makeupAffiliate = a.key; muSelected.clear(); renderMakeupView(); });
     bar.appendChild(chip);
   });
 
   const mu = getMakeup(makeupAffiliate);
+  // Selection is idno-based; drop any ticked idno no longer on this affiliate's list.
+  const liveIdnos = new Set(mu.rows.map(r => r.idno));
+  [...muSelected].forEach(idno => { if(!liveIdnos.has(idno)) muSelected.delete(idno); });
+
   const wrap = document.getElementById('tableWrap');
   wrap.innerHTML = '';
 
@@ -1482,6 +1487,7 @@ function renderMakeupView(){
       <button class="btn btn-gold" id="muAddFromCutoffBtn">Add from Cut-off List</button>
       <button class="btn" id="muAddEmployeeBtn">+ Add Employee</button>
       <button class="btn" id="muAddDateBtn">+ Add Date</button>
+      <button class="btn" id="muDeleteSelectedBtn" style="color:var(--st-separation);">Delete Selected</button>
     </div>`;
   wrap.appendChild(head);
 
@@ -1495,6 +1501,7 @@ function renderMakeupView(){
     </th>`).join('');
   table.innerHTML = `
     <thead><tr>
+      <th style="width:34px;"><input type="checkbox" id="muSelectAll" title="Select all" style="width:17px;height:17px;cursor:pointer;vertical-align:middle;"></th>
       <th>No.</th><th>ID No.</th><th>Last Name</th><th>First Name</th><th>Date Hired</th>
       ${dateHeads}
       <th></th>
@@ -1508,6 +1515,7 @@ function renderMakeupView(){
       return `<td style="text-align:center;"><input type="checkbox" class="mu-present" data-key="${d.makeup.replace(/"/g,'&quot;')}" ${on ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;"></td>`;
     }).join('');
     tr.innerHTML = `
+      <td style="text-align:center;"><input type="checkbox" class="mu-select" ${muSelected.has(row.idno) ? 'checked' : ''} title="Select for bulk delete" style="width:17px;height:17px;cursor:pointer;vertical-align:middle;"></td>
       <td>${ri + 1}</td>
       <td>${row.idno}</td>
       <td class="name-cell">${row.lastname}</td>
@@ -1515,6 +1523,10 @@ function renderMakeupView(){
       <td>${row.dateHired || ''}</td>
       ${cells}
       <td style="text-align:center;"><button class="mu-del-row" title="Remove employee from make-up list" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>`;
+    tr.querySelector('.mu-select').addEventListener('change', function(){
+      if(this.checked) muSelected.add(row.idno); else muSelected.delete(row.idno);
+      updateMuBulkControls(mu);
+    });
     tr.querySelectorAll('.mu-present').forEach(cb => {
       cb.addEventListener('change', () => {
         const key = cb.dataset.key;
@@ -1526,6 +1538,7 @@ function renderMakeupView(){
     tr.querySelector('.mu-del-row').addEventListener('click', () => {
       if(!confirm(`Remove ${row.lastname}, ${row.firstname} from the make-up list?`)) return;
       mu.rows.splice(ri, 1);
+      muSelected.delete(row.idno);
       saveAffiliate(makeupAffiliate);
       renderMakeupView();
     });
@@ -1534,7 +1547,7 @@ function renderMakeupView(){
 
   if(mu.rows.length === 0){
     const empty = document.createElement('tr');
-    empty.innerHTML = `<td colspan="${6 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
+    empty.innerHTML = `<td colspan="${7 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
     tbody.appendChild(empty);
   }
 
@@ -1557,8 +1570,39 @@ function renderMakeupView(){
   document.getElementById('muAddDateBtn').addEventListener('click', muAddDate);
   document.getElementById('muAddFromCutoffBtn').addEventListener('click', muOpenPicker);
 
+  document.getElementById('muSelectAll').addEventListener('change', function(){
+    if(this.checked) mu.rows.forEach(r => muSelected.add(r.idno));
+    else muSelected.clear();
+    renderMakeupView();
+  });
+  document.getElementById('muDeleteSelectedBtn').addEventListener('click', () => {
+    if(muSelected.size === 0){
+      alert('Tick the checkbox next to one or more employees first, then click Delete Selected.');
+      return;
+    }
+    const chosen = mu.rows.filter(r => muSelected.has(r.idno));
+    if(!confirm(`Remove ${chosen.length} employee${chosen.length === 1 ? '' : 's'} from ${makeupAffiliate}'s make-up list?\n\n${chosen.map(r => `${r.lastname}, ${r.firstname}`).join('\n')}`)) return;
+    mu.rows = mu.rows.filter(r => !muSelected.has(r.idno));
+    muSelected.clear();
+    saveAffiliate(makeupAffiliate);
+    renderMakeupView();
+  });
+  updateMuBulkControls(mu);
+
   document.getElementById('footerNote').textContent =
     `${makeupAffiliate} make-up schedule — ${mu.rows.length} employee${mu.rows.length === 1 ? '' : 's'}. Click a date cell to mark Present. Saves and syncs automatically.`;
+}
+
+// Keeps the "select all" checkbox and the Delete Selected button's label in
+// sync with muSelected, without a full re-render on every row checkbox click.
+function updateMuBulkControls(mu){
+  const selectAllCb = document.getElementById('muSelectAll');
+  if(selectAllCb){
+    selectAllCb.checked = mu.rows.length > 0 && mu.rows.every(r => muSelected.has(r.idno));
+    selectAllCb.indeterminate = !selectAllCb.checked && mu.rows.some(r => muSelected.has(r.idno));
+  }
+  const delBtn = document.getElementById('muDeleteSelectedBtn');
+  if(delBtn) delBtn.textContent = muSelected.size > 0 ? `Delete Selected (${muSelected.size})` : 'Delete Selected';
 }
 
 function muAddEmployee(){
