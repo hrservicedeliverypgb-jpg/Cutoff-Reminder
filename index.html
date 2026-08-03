@@ -1642,6 +1642,7 @@ function muOpenPicker(){
   body.innerHTML = `
     <p style="margin:0 0 10px;">Tick who joins ${makeupAffiliate}'s make-up schedule (names from cut-off <b>${aff.currentPeriod}</b>):</p>
     <input type="text" id="muPickSearch" placeholder="Type to filter names..." style="width:100%;margin-bottom:8px;padding:8px 12px;border:1px solid var(--navy-600);border-radius:7px;background:var(--navy-800);color:var(--text-hi);font-size:13px;font-family:'Inter',sans-serif;">
+    ${candidates.length ? `<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12.5px;font-weight:600;color:var(--text-mid);cursor:pointer;"><input type="checkbox" id="muPickSelectAll" style="width:16px;height:16px;cursor:pointer;">Select All${candidates.length > 1 ? ' (matching search)' : ''}</label>` : ''}
     <div style="max-height:300px;overflow-y:auto;border:1px solid var(--navy-700);border-radius:8px;padding:6px 12px;">
       ${candidates.length ? candidates.map((r, i) => `<label class="mu-pick-label" style="display:block;padding:5px 2px;font-size:13px;color:var(--text-mid);cursor:pointer;"><input type="checkbox" class="mu-pick" data-i="${i}" style="margin-right:8px;">${r.lastname}, ${r.firstname} <span style="color:var(--text-dim);font-size:11.5px;">(${r.idno})</span></label>`).join('')
         : '<div style="color:var(--text-dim);padding:10px;">Everyone from this cut-off is already on the make-up list.</div>'}
@@ -1650,12 +1651,38 @@ function muOpenPicker(){
       <button class="btn btn-gold" id="muPickAddBtn">Add Selected</button>
       <button class="btn" id="muPickCancelBtn">Cancel</button>
     </div>`;
+
+  function updatePickSelectAllState(){
+    const selectAllCb = document.getElementById('muPickSelectAll');
+    if(!selectAllCb) return;
+    const visibleCbs = [...document.querySelectorAll('.mu-pick-label')]
+      .filter(l => l.style.display !== 'none')
+      .map(l => l.querySelector('.mu-pick'));
+    selectAllCb.checked = visibleCbs.length > 0 && visibleCbs.every(cb => cb.checked);
+    selectAllCb.indeterminate = !selectAllCb.checked && visibleCbs.some(cb => cb.checked);
+  }
+
   document.getElementById('muPickSearch').addEventListener('input', function(){
     const q = this.value.toLowerCase();
     document.querySelectorAll('.mu-pick-label').forEach(l => {
       l.style.display = l.textContent.toLowerCase().includes(q) ? 'block' : 'none';
     });
+    updatePickSelectAllState();
   });
+  document.querySelectorAll('.mu-pick').forEach(cb => {
+    cb.addEventListener('change', updatePickSelectAllState);
+  });
+  const selectAllCb = document.getElementById('muPickSelectAll');
+  if(selectAllCb){
+    selectAllCb.addEventListener('change', function(){
+      document.querySelectorAll('.mu-pick-label').forEach(l => {
+        if(l.style.display === 'none') return;
+        l.querySelector('.mu-pick').checked = this.checked;
+      });
+      updatePickSelectAllState();
+    });
+  }
+
   document.getElementById('muPickAddBtn').addEventListener('click', () => {
     const picked = [...document.querySelectorAll('.mu-pick:checked')].map(cb => candidates[parseInt(cb.dataset.i, 10)]);
     picked.forEach(r => mu.rows.push({idno: r.idno, lastname: r.lastname, firstname: r.firstname, dateHired: '', present: {}}));
