@@ -529,15 +529,24 @@ const AFFILIATE_SECTIONS = {
   PPC: ['PPC', 'MC123', 'EPICS']
 };
 
-// PHI-only: anyone with any Remarks text is pulled out of their normal
-// section (Staff/Ranks) into this dedicated bottom section instead, so
-// flagged/annotated employees are grouped together regardless of which
-// roster they originally came from.
+// PHI-only: anyone in Ranks who has Remarks text is pulled out into this
+// dedicated bottom section instead — Staff with remarks stay in Staff
+// (already shown red via the remarks alert), only Ranks gets regrouped.
 const NOTES_SECTION_BY_AFFILIATE = { PHI: 'With Notes' };
+
+// Matches a row's section against the affiliate's configured list regardless
+// of case (imported sheets tag it from the sheet's own text, e.g. "RANKS",
+// which otherwise wouldn't match the canonical "Ranks" used everywhere else).
+function canonicalSectionLabel(affKey, rawSection){
+  const options = AFFILIATE_SECTIONS[affKey] || [];
+  if(!rawSection) return options[0] || '';
+  const idx = options.findIndex(o => o.toLowerCase() === String(rawSection).toLowerCase());
+  return idx !== -1 ? options[idx] : rawSection;
+}
 
 function effectiveSection(affKey, row, stateForPeriod){
   const notesLabel = NOTES_SECTION_BY_AFFILIATE[affKey];
-  if(notesLabel && stateForPeriod){
+  if(notesLabel && stateForPeriod && canonicalSectionLabel(affKey, row.section) === 'Ranks'){
     const st = stateForPeriod[row.idno];
     if(st && st.remarks && st.remarks.trim()) return notesLabel;
   }
@@ -1849,8 +1858,8 @@ function addNewPeriod(affKey){
 function sectionRank(affKey, section){
   const options = AFFILIATE_SECTIONS[affKey] || [];
   if(!section) return {bucket:0, name:''};
-  const idx = options.indexOf(section);
-  return idx !== -1 ? {bucket:idx+1, name:section} : {bucket:options.length+1, name:section};
+  const idx = options.findIndex(o => o.toLowerCase() === String(section).toLowerCase());
+  return idx !== -1 ? {bucket:idx+1, name:options[idx]} : {bucket:options.length+1, name:section};
 }
 
 // Keeps a cut-off's row order grouped by section (for affiliates that have
@@ -2009,7 +2018,7 @@ function renderStatsAndTable(){
 
   visibleRows.forEach(r => {
     if(sectionOptions){
-      const resolvedSection = effectiveSection(currentAffiliate, r, stateForPeriod) || sectionOptions[0];
+      const resolvedSection = canonicalSectionLabel(currentAffiliate, effectiveSection(currentAffiliate, r, stateForPeriod));
       if(resolvedSection !== lastRenderedSection){
         const sectionTr = document.createElement('tr');
         sectionTr.innerHTML = `<td colspan="8" style="background:var(--navy-800);color:var(--aff);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-size:11.5px;padding:8px 14px;">${resolvedSection}</td>`;
