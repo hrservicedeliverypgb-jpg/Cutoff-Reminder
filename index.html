@@ -525,9 +525,24 @@ const AFFILIATES = [
 // source workbooks lay out a bare-name divider row between groups, e.g. a
 // "RANKS" row in PHI's sheet). The first entry is the default/unmarked group.
 const AFFILIATE_SECTIONS = {
-  PHI: ['Staff', 'Ranks'],
+  PHI: ['Staff', 'Ranks', 'With Notes'],
   PPC: ['PPC', 'MC123', 'EPICS']
 };
+
+// PHI-only: anyone with any Remarks text is pulled out of their normal
+// section (Staff/Ranks) into this dedicated bottom section instead, so
+// flagged/annotated employees are grouped together regardless of which
+// roster they originally came from.
+const NOTES_SECTION_BY_AFFILIATE = { PHI: 'With Notes' };
+
+function effectiveSection(affKey, row, stateForPeriod){
+  const notesLabel = NOTES_SECTION_BY_AFFILIATE[affKey];
+  if(notesLabel && stateForPeriod){
+    const st = stateForPeriod[row.idno];
+    if(st && st.remarks && st.remarks.trim()) return notesLabel;
+  }
+  return row.section;
+}
 
 const DASHBOARD_KEY = '__dashboard__';
 const MAKEUP_KEY = '__makeup__';
@@ -1841,9 +1856,12 @@ function sectionRank(affKey, section){
 // Keeps a cut-off's row order grouped by section (for affiliates that have
 // one) and alphabetical by last name (then first name) within each group,
 // renumbering the "No." column per group so it doesn't look scrambled.
-function sortRowsBySection(rows, affKey){
+// stateForPeriod (optional) lets PHI's "anyone with remarks" rule override
+// a row's normal section — see effectiveSection().
+function sortRowsBySection(rows, affKey, stateForPeriod){
+  const sectionOf = r => effectiveSection(affKey, r, stateForPeriod);
   rows.sort((a, b) => {
-    const ra = sectionRank(affKey, a.section), rb = sectionRank(affKey, b.section);
+    const ra = sectionRank(affKey, sectionOf(a)), rb = sectionRank(affKey, sectionOf(b));
     if(ra.bucket !== rb.bucket) return ra.bucket - rb.bucket;
     if(ra.name !== rb.name) return ra.name.localeCompare(rb.name, undefined, {sensitivity:'base'});
     const byLast = (a.lastname||'').localeCompare(b.lastname||'', undefined, {sensitivity:'base'});
@@ -1852,7 +1870,7 @@ function sortRowsBySection(rows, affKey){
   });
   let counter = 0, lastKey = undefined;
   rows.forEach(r => {
-    const key = sectionRank(affKey, r.section);
+    const key = sectionRank(affKey, sectionOf(r));
     const groupKey = key.bucket + '|' + key.name;
     if(groupKey !== lastKey){ counter = 0; lastKey = groupKey; }
     counter++;
@@ -1926,8 +1944,15 @@ function renderStatsAndTable(){
   }
 
   const rows = aff.workbookData[aff.currentPeriod];
-  sortRowsBySection(rows, currentAffiliate);
   const stateForPeriod = aff.trackerState[aff.currentPeriod] || {};
+  // Initialize tracker state before sorting, so a fresh import's remarks are
+  // already visible to effectiveSection() on the very first render.
+  rows.forEach(r => {
+    if(!stateForPeriod[r.idno]){
+      stateForPeriod[r.idno] = {status: guessStatus(r.remarksOriginal), logsChecked:false, remarks:r.remarksOriginal||''};
+    }
+  });
+  sortRowsBySection(rows, currentAffiliate, stateForPeriod);
 
   let counts = {total: rows.length, newhire:0, separation:0, maternity:0, transfer:0, nologs:0, pending:0};
   rows.forEach(r => {
@@ -1984,7 +2009,7 @@ function renderStatsAndTable(){
 
   visibleRows.forEach(r => {
     if(sectionOptions){
-      const resolvedSection = r.section || sectionOptions[0];
+      const resolvedSection = effectiveSection(currentAffiliate, r, stateForPeriod) || sectionOptions[0];
       if(resolvedSection !== lastRenderedSection){
         const sectionTr = document.createElement('tr');
         sectionTr.innerHTML = `<td colspan="8" style="background:var(--navy-800);color:var(--aff);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-size:11.5px;padding:8px 14px;">${resolvedSection}</td>`;
