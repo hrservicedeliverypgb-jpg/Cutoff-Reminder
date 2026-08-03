@@ -529,9 +529,16 @@ const AFFILIATE_SECTIONS = {
   PPC: ['PPC', 'MC123', 'EPICS']
 };
 
-// PHI-only: anyone in Ranks who has Remarks text is pulled out into this
-// dedicated bottom section instead — Staff with remarks stay in Staff
-// (already shown red via the remarks alert), only Ranks gets regrouped.
+// Purely text-based regrouping: if a row's Remarks mentions one of these
+// keywords, it's moved into the matching section automatically — no need to
+// set a Section or re-import first. Checked in order, first match wins.
+const REMARKS_SECTION_RULES = {
+  PHI: [ { keyword: 'ranks', section: 'With Notes' } ],
+  PPC: [ { keyword: 'mc123', section: 'MC123' }, { keyword: 'epics', section: 'EPICS' } ]
+};
+
+// PHI-only: "With Notes" is a computed label (derived from remarks, never a
+// real roster), so it's excluded from the manual add-employee section list.
 const NOTES_SECTION_BY_AFFILIATE = { PHI: 'With Notes' };
 
 // Matches a row's section against the affiliate's configured list regardless
@@ -554,12 +561,14 @@ function getAssignableSections(affKey){
 }
 
 function effectiveSection(affKey, row, stateForPeriod){
-  const notesLabel = NOTES_SECTION_BY_AFFILIATE[affKey];
-  if(notesLabel && stateForPeriod){
+  const rules = REMARKS_SECTION_RULES[affKey];
+  if(rules && stateForPeriod){
     const st = stateForPeriod[row.idno];
-    // Purely text-based: anyone whose Remarks mentions "ranks" moves down to
-    // "With Notes" automatically — no need to set a Section or re-import first.
-    if(st && st.remarks && /ranks/i.test(st.remarks)) return notesLabel;
+    if(st && st.remarks){
+      const remarksLower = st.remarks.toLowerCase();
+      const match = rules.find(rule => remarksLower.includes(rule.keyword));
+      if(match) return match.section;
+    }
   }
   return row.section;
 }
