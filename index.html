@@ -555,9 +555,11 @@ function getAssignableSections(affKey){
 
 function effectiveSection(affKey, row, stateForPeriod){
   const notesLabel = NOTES_SECTION_BY_AFFILIATE[affKey];
-  if(notesLabel && stateForPeriod && canonicalSectionLabel(affKey, row.section) === 'Ranks'){
+  if(notesLabel && stateForPeriod){
     const st = stateForPeriod[row.idno];
-    if(st && st.remarks && st.remarks.trim()) return notesLabel;
+    // Purely text-based: anyone whose Remarks mentions "ranks" moves down to
+    // "With Notes" automatically — no need to set a Section or re-import first.
+    if(st && st.remarks && /ranks/i.test(st.remarks)) return notesLabel;
   }
   return row.section;
 }
