@@ -1460,6 +1460,17 @@ function renderDashboardView(){
 }
 
 /* ---------- December Make-up Schedule ---------- */
+// Keeps the make-up list alphabetical by last name (then first name) — like
+// the main tracker table, sorted at render time so it applies no matter how
+// a name got added (+ Add Employee, Add from Cut-off List, or a batch pick).
+function sortMuRowsByLastName(rows){
+  rows.sort((a, b) => {
+    const byLast = (a.lastname||'').localeCompare(b.lastname||'', undefined, {sensitivity:'base'});
+    if(byLast !== 0) return byLast;
+    return (a.firstname||'').localeCompare(b.firstname||'', undefined, {sensitivity:'base'});
+  });
+}
+
 function renderMakeupView(){
   const bar = document.getElementById('periodBar');
   bar.innerHTML = '';
@@ -1472,6 +1483,7 @@ function renderMakeupView(){
   });
 
   const mu = getMakeup(makeupAffiliate);
+  sortMuRowsByLastName(mu.rows);
   // Selection is idno-based; drop any ticked idno no longer on this affiliate's list.
   const liveIdnos = new Set(mu.rows.map(r => r.idno));
   [...muSelected].forEach(idno => { if(!liveIdnos.has(idno)) muSelected.delete(idno); });
