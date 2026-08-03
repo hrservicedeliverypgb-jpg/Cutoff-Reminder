@@ -326,6 +326,15 @@
     z-index:2;
     box-shadow:0 1px 0 var(--navy-600);
   }
+  /* The make-up table scrolls inside its own contained box (see .scroller
+     above), so its sticky header anchors to that box at top:0 — not the
+     page-level offset the main tracker table uses. */
+  .makeup-table thead th{
+    position:sticky;
+    top:0;
+    z-index:2;
+    box-shadow:0 1px 0 var(--navy-600);
+  }
   thead th:first-child{border-top-left-radius:10px;}
   thead th:last-child{border-top-right-radius:10px;}
   tbody tr:last-child td:first-child{border-bottom-left-radius:10px;}
@@ -1504,8 +1513,15 @@ function renderMakeupView(){
   wrap.appendChild(head);
 
   const scroller = document.createElement('div');
-  scroller.style.cssText = 'overflow-x:auto;';
+  // An explicit max-height makes this a real, intentional scroll container
+  // (both axes) so its sticky header anchors to this box correctly. Without
+  // a constrained height, "overflow-x:auto" alone still forces overflow-y to
+  // an effective "auto" per the CSS spec, but with nothing to ever actually
+  // scroll — that unintentional, vacuous scroll container is what made the
+  // sticky header render mid-list instead of at the top.
+  scroller.style.cssText = 'overflow:auto; max-height:65vh; border-radius:10px;';
   const table = document.createElement('table');
+  table.className = 'makeup-table';
   const dateHeads = mu.dates.map((d, i) => `
     <th style="text-align:center;min-width:130px;">
       <div style="color:var(--st-newhire);font-size:11px;white-space:nowrap;">${d.makeup}</div>
