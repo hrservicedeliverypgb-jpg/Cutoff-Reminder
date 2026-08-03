@@ -1531,7 +1531,6 @@ function renderMakeupView(){
     <thead><tr>
       <th style="width:34px;"><input type="checkbox" id="muSelectAll" title="Select all" style="width:17px;height:17px;cursor:pointer;vertical-align:middle;"></th>
       <th>No.</th><th>ID No.</th><th>Last Name</th><th>First Name</th><th>Date Hired</th>
-      <th style="text-align:center;min-width:90px;">On Make-up</th>
       ${dateHeads}
       <th></th>
     </tr></thead><tbody></tbody>`;
@@ -1540,8 +1539,13 @@ function renderMakeupView(){
   mu.rows.forEach((row, ri) => {
     const tr = document.createElement('tr');
     const cells = mu.dates.map(d => {
-      const on = !!(row.present && row.present[d.makeup]);
-      return `<td style="text-align:center;"><input type="checkbox" class="mu-present" data-key="${d.makeup.replace(/"/g,'&quot;')}" ${on ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;"></td>`;
+      const key = d.makeup.replace(/"/g,'&quot;');
+      const presentOn = !!(row.present && row.present[d.makeup]);
+      const flagOn = !!(row.onMakeup && row.onMakeup[d.makeup]);
+      return `<td style="text-align:center;white-space:nowrap;">
+        <input type="checkbox" class="mu-present" data-key="${key}" ${presentOn ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;margin-right:6px;">
+        <input type="checkbox" class="mu-onmakeup" data-key="${key}" ${flagOn ? 'checked' : ''} title="Mark as working the make-up schedule on this date" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-separation);vertical-align:middle;">
+      </td>`;
     }).join('');
     tr.innerHTML = `
       <td style="text-align:center;"><input type="checkbox" class="mu-select" ${muSelected.has(row.idno) ? 'checked' : ''} title="Select for bulk delete" style="width:17px;height:17px;cursor:pointer;vertical-align:middle;"></td>
@@ -1550,22 +1554,25 @@ function renderMakeupView(){
       <td class="name-cell">${row.lastname}</td>
       <td class="name-cell">${row.firstname}</td>
       <td>${row.dateHired || ''}</td>
-      <td style="text-align:center;"><input type="checkbox" class="mu-onmakeup" ${row.onMakeup ? 'checked' : ''} title="Mark this employee as working the make-up schedule" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-separation);vertical-align:middle;"></td>
       ${cells}
       <td style="text-align:center;"><button class="mu-del-row" title="Remove employee from make-up list" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>`;
     tr.querySelector('.mu-select').addEventListener('change', function(){
       if(this.checked) muSelected.add(row.idno); else muSelected.delete(row.idno);
       updateMuBulkControls(mu);
     });
-    tr.querySelector('.mu-onmakeup').addEventListener('change', function(){
-      row.onMakeup = this.checked;
-      saveAffiliate(makeupAffiliate);
-    });
     tr.querySelectorAll('.mu-present').forEach(cb => {
       cb.addEventListener('change', () => {
         const key = cb.dataset.key;
         row.present = row.present || {};
         row.present[key] = cb.checked;
+        saveAffiliate(makeupAffiliate);
+      });
+    });
+    tr.querySelectorAll('.mu-onmakeup').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const key = cb.dataset.key;
+        row.onMakeup = row.onMakeup || {};
+        row.onMakeup[key] = cb.checked;
         saveAffiliate(makeupAffiliate);
       });
     });
@@ -1581,7 +1588,7 @@ function renderMakeupView(){
 
   if(mu.rows.length === 0){
     const empty = document.createElement('tr');
-    empty.innerHTML = `<td colspan="${8 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
+    empty.innerHTML = `<td colspan="${7 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
     tbody.appendChild(empty);
   }
 
