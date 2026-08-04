@@ -1877,9 +1877,14 @@ function addNewPeriod(affKey){
 // scattering alphabetically among unrelated people.
 function sectionRank(affKey, section){
   const options = AFFILIATE_SECTIONS[affKey] || [];
-  if(!section) return {bucket:0, name:''};
-  const idx = options.findIndex(o => o.toLowerCase() === String(section).toLowerCase());
-  return idx !== -1 ? {bucket:idx+1, name:options[idx]} : {bucket:options.length+1, name:section};
+  if(options.length === 0) return {bucket:0, name:''};
+  // An unset section means the same thing as the affiliate's first/default
+  // section (e.g. "Staff") — resolve it to that up front so both group
+  // together, instead of unset rows and explicitly-tagged first-section rows
+  // landing in two different buckets.
+  const resolved = section || options[0];
+  const idx = options.findIndex(o => o.toLowerCase() === String(resolved).toLowerCase());
+  return idx !== -1 ? {bucket:idx, name:options[idx]} : {bucket:options.length, name:resolved};
 }
 
 // Keeps a cut-off's row order grouped by section (for affiliates that have
