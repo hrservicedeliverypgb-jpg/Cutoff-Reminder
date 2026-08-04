@@ -578,6 +578,7 @@ const MAKEUP_KEY = '__makeup__';
 let currentAffiliate = DASHBOARD_KEY;
 let makeupAffiliate = 'PHI';
 let muSelected = new Set(); // idnos ticked for bulk delete on the Dec Make-up tab, per affiliate shown
+let muSearchTerm = ''; // filters the Dec Make-up tab's employee list, per affiliate shown
 
 // Default December make-up sessions (editable in the UI): each make-up
 // day covers one earlier missed date.
@@ -1531,7 +1532,7 @@ function renderMakeupView(){
     const chip = document.createElement('button');
     chip.className = 'period-chip' + (a.key === makeupAffiliate ? ' active' : '');
     chip.textContent = a.key;
-    chip.addEventListener('click', () => { makeupAffiliate = a.key; muSelected.clear(); renderMakeupView(); });
+    chip.addEventListener('click', () => { makeupAffiliate = a.key; muSelected.clear(); muSearchTerm = ''; renderMakeupView(); });
     bar.appendChild(chip);
   });
 
@@ -1555,6 +1556,11 @@ function renderMakeupView(){
       <button class="btn" id="muDeleteSelectedBtn" style="color:var(--st-separation);">Delete Selected</button>
     </div>`;
   wrap.appendChild(head);
+
+  const searchRow = document.createElement('div');
+  searchRow.style.cssText = 'margin-bottom:12px;';
+  searchRow.innerHTML = `<input type="text" class="search-box" id="muSearchBox" placeholder="Search name or ID no..." value="${muSearchTerm.replace(/"/g,'&quot;')}">`;
+  wrap.appendChild(searchRow);
 
   const scroller = document.createElement('div');
   // An explicit max-height makes this a real, intentional scroll container
@@ -1600,6 +1606,8 @@ function renderMakeupView(){
       <td>${row.dateHired || ''}</td>
       ${cells}
       <td style="text-align:center;"><button class="mu-del-row" title="Remove employee from make-up list" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>`;
+    tr.dataset.search = (row.lastname + ' ' + row.firstname + ' ' + row.idno).toLowerCase();
+    if(muSearchTerm && !tr.dataset.search.includes(muSearchTerm.toLowerCase())) tr.style.display = 'none';
     tr.querySelector('.mu-select').addEventListener('change', function(){
       if(this.checked) muSelected.add(row.idno); else muSelected.delete(row.idno);
       updateMuBulkControls(mu);
@@ -1654,6 +1662,15 @@ function renderMakeupView(){
   document.getElementById('muAddEmployeeBtn').addEventListener('click', muAddEmployee);
   document.getElementById('muAddDateBtn').addEventListener('click', muAddDate);
   document.getElementById('muAddFromCutoffBtn').addEventListener('click', muOpenPicker);
+
+  // Filters rows in place (no full re-render) so typing doesn't lose focus.
+  document.getElementById('muSearchBox').addEventListener('input', function(){
+    muSearchTerm = this.value;
+    const term = muSearchTerm.toLowerCase();
+    tbody.querySelectorAll('tr').forEach(tr => {
+      tr.style.display = (!term || (tr.dataset.search || '').includes(term)) ? '' : 'none';
+    });
+  });
 
   document.getElementById('muSelectAll').addEventListener('change', function(){
     if(this.checked) mu.rows.forEach(r => muSelected.add(r.idno));
