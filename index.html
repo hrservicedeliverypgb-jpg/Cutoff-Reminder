@@ -1599,7 +1599,7 @@ function renderMakeupView(){
       return `<td style="text-align:center;white-space:nowrap;">
         <input type="checkbox" class="mu-present" data-key="${key}" ${presentOn ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;margin-right:6px;">
         <input type="checkbox" class="mu-onmakeup" data-key="${key}" ${flagOn ? 'checked' : ''} title="Mark as working the make-up schedule on this date" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-separation);vertical-align:middle;margin-right:6px;">
-        <button type="button" class="mu-notduty" data-key="${key}" title="Mark as NOT on duty for this date" style="width:22px;height:22px;border:1px solid var(--navy-600);border-radius:4px;background:${notDutyOn ? 'var(--st-transfer-bg)' : 'transparent'};color:${notDutyOn ? 'var(--st-transfer)' : 'var(--text-dim)'};font-weight:700;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle;">${notDutyOn ? '✕' : ''}</button>
+        <button type="button" class="mu-notduty" data-key="${key}" title="Mark as NOT on duty for this date" style="width:22px;height:22px;border:1px solid var(--navy-600);border-radius:4px;background:${notDutyOn ? '#1e3a8a' : 'transparent'};color:${notDutyOn ? '#ffffff' : 'var(--text-dim)'};font-weight:700;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle;">${notDutyOn ? '✕' : ''}</button>
       </td>`;
     }).join('');
     tr.innerHTML = `
@@ -1640,8 +1640,8 @@ function renderMakeupView(){
         const on = !row.notOnDuty[key];
         row.notOnDuty[key] = on;
         btn.textContent = on ? '✕' : '';
-        btn.style.background = on ? 'var(--st-transfer-bg)' : 'transparent';
-        btn.style.color = on ? 'var(--st-transfer)' : 'var(--text-dim)';
+        btn.style.background = on ? '#1e3a8a' : 'transparent';
+        btn.style.color = on ? '#ffffff' : 'var(--text-dim)';
         saveAffiliate(makeupAffiliate);
       });
     });
