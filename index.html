@@ -482,6 +482,7 @@
     <button class="pill" data-filter="Transfer">Transfer</button>
     <button class="pill" data-filter="No Logs">No Logs</button>
     <button class="pill" data-filter="__pending">Logs Pending</button>
+    <button class="pill" data-filter="__remarks">Remarks</button>
   </div>
   <button class="btn btn-gold" id="addEmployeeBtn">+ Add Employee</button>
 </div>
@@ -2035,6 +2036,7 @@ function renderStatsAndTable(){
     }
     if(currentFilter === 'all') return true;
     if(currentFilter === '__pending') return !st.logsChecked;
+    if(currentFilter === '__remarks') return !!(st.remarks && st.remarks.trim());
     return st.status === currentFilter;
   });
 
