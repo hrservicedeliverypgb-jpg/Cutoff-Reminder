@@ -384,18 +384,17 @@
   tr.status-nologs{background:var(--st-nologs-bg);}
   tr.status-transfer{background:var(--st-transfer-bg);}
 
-  /* Any status other than Active — bold red text on a dark navy row,
-     across every affiliate tab. Applied in addition to the per-status
-     class above, so it overrides that lighter background. */
+  /* Remarks safety-net: flags rows whose free-text remarks mention resignation,
+     retirement, maternity, or no-logs even if the Status dropdown wasn't updated yet.
+     Placed before status-flagged below so an actual non-Active status always wins the row color. */
+  tr.remarks-alert{background:var(--remarks-flag-bg) !important;}
+  tr.remarks-alert .name-cell{color:var(--remarks-flag-text) !important;}
+
+  /* Any status other than Active - bold white text on a dark red row, across every affiliate tab. */
   tr.status-flagged{background:#7a1220 !important;}
   tr.status-flagged td, tr.status-flagged .name-cell, tr.status-flagged .remarks-input{color:#ffffff !important; font-weight:700;}
   tr.status-flagged .remarks-input::placeholder{color:#e0a8ae !important; font-weight:400;}
   tr.status-flagged td.status-cell select{border-color:#ffffff !important; color:#ffffff !important;}
-
-  /* Remarks safety-net: flags rows whose free-text remarks mention resignation,
-     retirement, maternity, or no-logs even if the Status dropdown wasn't updated yet. */
-  tr.remarks-alert{background:var(--remarks-flag-bg) !important;}
-  tr.remarks-alert .name-cell{color:var(--remarks-flag-text) !important;}
 
   .remarks-input{
     background:transparent;
