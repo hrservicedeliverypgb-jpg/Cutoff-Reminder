@@ -335,6 +335,12 @@
     z-index:2;
     box-shadow:0 1px 0 var(--navy-600);
   }
+  .tasks-table thead th{
+    position:sticky;
+    top:0;
+    z-index:2;
+    box-shadow:0 1px 0 var(--navy-600);
+  }
   thead th:first-child{border-top-left-radius:10px;}
   thead th:last-child{border-top-right-radius:10px;}
   tbody tr:last-child td:first-child{border-bottom-left-radius:10px;}
@@ -429,6 +435,36 @@
     border-color:var(--logs-checked);
     color:var(--logs-checked);
   }
+
+  .task-text-input{
+    background:transparent;
+    border:1px solid transparent;
+    color:var(--text-hi);
+    font-weight:600;
+    font-size:13px;
+    font-family:'Inter',sans-serif;
+    width:100%;
+    padding:5px 6px;
+    border-radius:5px;
+  }
+  .task-text-input:focus{background:var(--navy-800); border-color:var(--navy-600); outline:none;}
+  .task-due-input{
+    border:1px solid var(--navy-600);
+    background:var(--navy-800);
+    color:var(--text-hi);
+    font-size:12px;
+    font-family:'Inter',sans-serif;
+    padding:5px 6px;
+    border-radius:5px;
+    cursor:pointer;
+  }
+  /* Completed tasks are muted and struck through; overdue ones reuse the
+     tracker's dark-red/white flagged-row look for visual consistency. */
+  tr.task-done{background:var(--st-newhire-bg);}
+  tr.task-done td, tr.task-done .task-text-input{color:var(--text-dim) !important; text-decoration:line-through;}
+  tr.task-overdue{background:#7a1220 !important;}
+  tr.task-overdue td, tr.task-overdue .task-text-input, tr.task-overdue .task-due-input{color:#ffffff !important; font-weight:700;}
+  tr.task-overdue .task-due-input{background:#7a1220 !important; border-color:#ffffff !important;}
 
   .empty-state{
     text-align:center;
@@ -585,6 +621,7 @@ function effectiveSection(affKey, row, stateForPeriod){
 
 const DASHBOARD_KEY = '__dashboard__';
 const MAKEUP_KEY = '__makeup__';
+const TASKS_KEY = '__tasks__';
 let currentAffiliate = DASHBOARD_KEY;
 let makeupAffiliate = 'PHI';
 let muSelected = new Set(); // idnos ticked for bulk delete on the Dec Make-up tab, per affiliate shown
@@ -612,6 +649,7 @@ function getMakeup(affKey){
 // Per-affiliate in-memory state, hydrated from the storage backend (Claude artifact storage when available, otherwise this browser's localStorage)
 let store = {};
 AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], trackerState:{}, currentPeriod:null });
+store[TASKS_KEY] = { tasks: [] };
 
 let currentFilter = 'all';
 let dashboardFilter = null;   // status drill-down open on the Main Dashboard
@@ -665,6 +703,15 @@ async function loadFromStorage(){
     }catch(e){
       // key doesn't exist yet for this affiliate — leave it as empty default
     }
+  }
+  try{
+    const result = await storageBackend.get(storageKey(TASKS_KEY), false);
+    if(result && result.value){
+      const parsed = JSON.parse(result.value);
+      store[TASKS_KEY] = { tasks: Array.isArray(parsed.tasks) ? parsed.tasks : [] };
+    }
+  }catch(e){
+    // no tasks saved yet — leave it as empty default
   }
   setSyncStatus('idle');
 }
@@ -1100,6 +1147,7 @@ function dashboardFilterLabel(f){
 
 function currentAffColor(){
   if(currentAffiliate === MAKEUP_KEY) return '#1f7a4c';
+  if(currentAffiliate === TASKS_KEY) return '#4a5ec4';
   const found = AFFILIATES.find(a => a.key === currentAffiliate);
   return found ? found.color : '#6d3fb8';
 }
@@ -1109,6 +1157,7 @@ function applyAffiliateTheme(){
   document.getElementById('pageTitle').textContent =
     currentAffiliate === DASHBOARD_KEY ? 'Main Dashboard'
     : currentAffiliate === MAKEUP_KEY ? 'December Make-up Schedule'
+    : currentAffiliate === TASKS_KEY ? 'My Tasks'
     : 'Cut-off Tracker';
 }
 
@@ -1201,6 +1250,7 @@ function renderYearBar(years){
 document.getElementById('importBtn').addEventListener('click', () => {
   if(currentAffiliate === DASHBOARD_KEY){ alert('Select an affiliate tab first, then import that affiliate\'s workbook.'); return; }
   if(currentAffiliate === MAKEUP_KEY){ alert('The make-up schedule has its own buttons — use "Add from Cut-off List" or "+ Add Employee". To import a cut-off workbook, switch to an affiliate tab.'); return; }
+  if(currentAffiliate === TASKS_KEY){ alert('My Tasks doesn\'t use imports — use "+ Add Task" instead.'); return; }
   document.getElementById('fileInput').click();
 });
 
@@ -1296,6 +1346,11 @@ function renderAll(){
     document.getElementById('toolbar').style.display = 'none';
     document.getElementById('statsRow').style.display = 'none';
     renderMakeupView();
+  } else if(currentAffiliate === TASKS_KEY){
+    document.getElementById('periodBar').innerHTML = '';
+    document.getElementById('toolbar').style.display = 'none';
+    document.getElementById('statsRow').style.display = 'none';
+    renderTasksView();
   } else {
     document.getElementById('addEmployeeBtn').style.display = 'inline-block';
     renderPeriodBar();
@@ -1328,6 +1383,17 @@ function renderAffiliateBar(){
     renderAll();
   });
   bar.appendChild(muTab);
+
+  const tasksTab = document.createElement('button');
+  tasksTab.className = 'affiliate-tab' + (currentAffiliate === TASKS_KEY ? ' active' : '');
+  tasksTab.style.setProperty('--dotcolor', '#4a5ec4');
+  tasksTab.style.setProperty('--tabcolor', '#4a5ec4');
+  tasksTab.innerHTML = `<span class="dot"></span>My Tasks`;
+  tasksTab.addEventListener('click', () => {
+    currentAffiliate = TASKS_KEY;
+    renderAll();
+  });
+  bar.appendChild(tasksTab);
 
   AFFILIATES.forEach(a => {
     const tab = document.createElement('button');
@@ -1753,6 +1819,122 @@ function muAddDate(){
   mu.dates.push({makeup: makeup.trim(), covers: covers.trim()});
   saveAffiliate(makeupAffiliate);
   renderMakeupView();
+}
+
+/* ============ My Tasks — a personal to-do tab, independent of any affiliate ============ */
+
+function todayISO(){
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+function formatDisplayDate(iso){
+  if(!iso) return '';
+  const [y, m, d] = iso.split('-').map(Number);
+  if(!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+
+function tasksSorted(tasks){
+  // Soonest due date first; tasks with no due date sink to the bottom.
+  return [...tasks].sort((a, b) => {
+    if(!a.dueDate && !b.dueDate) return 0;
+    if(!a.dueDate) return 1;
+    if(!b.dueDate) return -1;
+    return a.dueDate.localeCompare(b.dueDate);
+  });
+}
+
+function renderTasksView(){
+  const taskStore = store[TASKS_KEY];
+  const tasks = tasksSorted(taskStore.tasks);
+  const today = todayISO();
+
+  const wrap = document.getElementById('tableWrap');
+  wrap.innerHTML = '';
+
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin:4px 0 12px;';
+  head.innerHTML = `
+    <div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:var(--text-hi);">My Tasks</div>
+    <button class="btn btn-gold" id="taskAddBtn">+ Add Task</button>`;
+  wrap.appendChild(head);
+
+  const table = document.createElement('table');
+  table.className = 'tasks-table';
+  table.innerHTML = `
+    <thead><tr>
+      <th style="width:34px;">No.</th>
+      <th>Task</th>
+      <th style="width:140px;">Date Added</th>
+      <th style="width:160px;">Due Date</th>
+      <th style="width:110px;text-align:center;">Status</th>
+      <th style="width:34px;"></th>
+    </tr></thead><tbody></tbody>`;
+  const tbody = table.querySelector('tbody');
+
+  tasks.forEach((task, i) => {
+    const overdue = !task.done && task.dueDate && task.dueDate < today;
+    const tr = document.createElement('tr');
+    if(task.done) tr.classList.add('task-done');
+    else if(overdue) tr.classList.add('task-overdue');
+    tr.innerHTML = `
+      <td>${i + 1}</td>
+      <td><input type="text" class="task-text-input" value="${(task.text || '').replace(/"/g,'&quot;')}" placeholder="Describe the task..."></td>
+      <td>${formatDisplayDate(task.dateAdded)}</td>
+      <td><input type="date" class="task-due-input" value="${task.dueDate || ''}"></td>
+      <td style="text-align:center;"><button class="logs-toggle ${task.done ? 'checked' : ''}">${task.done ? 'Done' : 'Pending'}</button></td>
+      <td style="text-align:center;"><button class="task-del-btn" title="Delete this task" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>
+    `;
+    tr.querySelector('.task-text-input').addEventListener('input', function(e){
+      task.text = e.target.value;
+      saveAffiliate(TASKS_KEY);
+    });
+    tr.querySelector('.task-due-input').addEventListener('change', function(e){
+      task.dueDate = e.target.value;
+      saveAffiliate(TASKS_KEY);
+      renderTasksView();
+    });
+    tr.querySelector('.logs-toggle').addEventListener('click', function(){
+      task.done = !task.done;
+      saveAffiliate(TASKS_KEY);
+      renderTasksView();
+    });
+    tr.querySelector('.task-del-btn').addEventListener('click', function(){
+      if(!confirm(`Delete this task?\n\n"${task.text || '(untitled)'}"`)) return;
+      taskStore.tasks = taskStore.tasks.filter(t => t.id !== task.id);
+      saveAffiliate(TASKS_KEY);
+      renderTasksView();
+    });
+    tbody.appendChild(tr);
+  });
+
+  if(tasks.length === 0){
+    const empty = document.createElement('tr');
+    empty.innerHTML = `<td colspan="6" style="text-align:center;color:var(--text-dim);padding:30px;">No tasks yet — click "+ Add Task" to add one.</td>`;
+    tbody.appendChild(empty);
+  }
+
+  wrap.appendChild(table);
+
+  document.getElementById('taskAddBtn').addEventListener('click', () => {
+    const text = prompt('Task description:', '');
+    if(!text || !text.trim()) return;
+    taskStore.tasks.push({
+      id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      text: text.trim(),
+      dateAdded: todayISO(),
+      dueDate: '',
+      done: false
+    });
+    saveAffiliate(TASKS_KEY);
+    renderTasksView();
+  });
+
+  const overdueCount = tasks.filter(t => !t.done && t.dueDate && t.dueDate < today).length;
+  const doneCount = tasks.filter(t => t.done).length;
+  document.getElementById('footerNote').textContent =
+    `My Tasks — ${tasks.length} task${tasks.length === 1 ? '' : 's'}, ${doneCount} done, ${overdueCount} overdue. Saves automatically in this browser.`;
 }
 
 function muOpenPicker(){
@@ -2195,6 +2377,22 @@ document.getElementById('statsRow').addEventListener('click', function(e){
 });
 
 document.getElementById('exportBtn').addEventListener('click', function(){
+  if(currentAffiliate === TASKS_KEY){
+    const tasks = store[TASKS_KEY].tasks;
+    const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
+    let csv = 'NO,TASK,DATE ADDED,DUE DATE,STATUS\n';
+    tasks.forEach((t, i) => {
+      csv += [i+1, t.text, t.dateAdded, t.dueDate, t.done ? 'Done' : 'Pending'].map(esc).join(',') + '\n';
+    });
+    const blob = new Blob([csv], {type:'text/csv'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'my_tasks.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+    return;
+  }
   if(currentAffiliate === MAKEUP_KEY){
     const mu = getMakeup(makeupAffiliate);
     const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
