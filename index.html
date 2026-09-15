@@ -456,8 +456,10 @@
     font-family:'Inter',sans-serif;
     padding:5px 6px;
     border-radius:5px;
-    cursor:pointer;
+    width:100%;
   }
+  .task-due-input::placeholder{color:var(--text-dim);}
+  .task-due-input:focus{outline:none; border-color:var(--aff);}
   /* Completed tasks are muted and struck through; overdue ones reuse the
      tracker's dark-red/white flagged-row look for visual consistency. */
   tr.task-done{background:var(--st-newhire-bg);}
@@ -1843,6 +1845,25 @@ function formatDisplayDate(iso){
   return new Date(y, m - 1, d).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 }
 
+// Reads a manually-typed date in most common forms (09/20/2026, 9-20-2026,
+// September 20 2026, 2026-09-20, ...) and returns it as an ISO yyyy-mm-dd
+// string, or null if it can't be understood.
+function parseTypedDate(str){
+  const trimmed = (str || '').trim();
+  if(!trimmed) return null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const slashOrDash = trimmed.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(slashOrDash){
+    const month = parseInt(slashOrDash[1], 10), day = parseInt(slashOrDash[2], 10), year = parseInt(slashOrDash[3], 10);
+    const d = new Date(year, month - 1, day);
+    if(d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+    return year + '-' + String(month).padStart(2,'0') + '-' + String(day).padStart(2,'0');
+  }
+  const parsed = new Date(trimmed);
+  if(isNaN(parsed.getTime())) return null;
+  return parsed.getFullYear() + '-' + String(parsed.getMonth() + 1).padStart(2,'0') + '-' + String(parsed.getDate()).padStart(2,'0');
+}
+
 function daysBetweenISO(fromIso, toIso){
   const [fy, fm, fd] = fromIso.split('-').map(Number);
   const [ty, tm, td] = toIso.split('-').map(Number);
@@ -1909,7 +1930,7 @@ function renderTasksView(){
       <td>${i + 1}</td>
       <td><input type="text" class="task-text-input" value="${(task.text || '').replace(/"/g,'&quot;')}" placeholder="Describe the task..."></td>
       <td>${formatDisplayDate(task.dateAdded)}</td>
-      <td><input type="date" class="task-due-input" value="${task.dueDate || ''}"></td>
+      <td><input type="text" class="task-due-input" value="${task.dueDate ? formatDisplayDate(task.dueDate) : ''}" placeholder="e.g. 09/20/2026"></td>
       <td style="text-align:center;"><button class="logs-toggle ${task.done ? 'checked' : ''}">${task.done ? 'Done' : 'Pending'}</button></td>
       <td class="tat-cell">${tatCell}</td>
       <td style="text-align:center;"><button class="task-del-btn" title="Delete this task" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>
@@ -1919,7 +1940,20 @@ function renderTasksView(){
       saveAffiliate(TASKS_KEY);
     });
     tr.querySelector('.task-due-input').addEventListener('change', function(e){
-      task.dueDate = e.target.value;
+      const raw = e.target.value.trim();
+      if(!raw){
+        task.dueDate = '';
+        saveAffiliate(TASKS_KEY);
+        renderTasksView();
+        return;
+      }
+      const iso = parseTypedDate(raw);
+      if(!iso){
+        alert('Couldn\'t read that date. Try a format like 09/20/2026 or September 20, 2026.');
+        e.target.value = task.dueDate ? formatDisplayDate(task.dueDate) : '';
+        return;
+      }
+      task.dueDate = iso;
       saveAffiliate(TASKS_KEY);
       renderTasksView();
     });
