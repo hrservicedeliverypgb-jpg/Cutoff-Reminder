@@ -461,10 +461,18 @@
   /* Completed tasks are muted and struck through; overdue ones reuse the
      tracker's dark-red/white flagged-row look for visual consistency. */
   tr.task-done{background:var(--st-newhire-bg);}
-  tr.task-done td, tr.task-done .task-text-input{color:var(--text-dim) !important; text-decoration:line-through;}
+  tr.task-done td:not(.tat-cell), tr.task-done .task-text-input{color:var(--text-dim) !important; text-decoration:line-through;}
+  tr.task-done .tat-cell{color:var(--text-dim) !important;}
   tr.task-overdue{background:#7a1220 !important;}
   tr.task-overdue td, tr.task-overdue .task-text-input, tr.task-overdue .task-due-input{color:#ffffff !important; font-weight:700;}
   tr.task-overdue .task-due-input{background:#7a1220 !important; border-color:#ffffff !important;}
+
+  .tat-cell{font-size:12px; font-weight:600; white-space:nowrap;}
+  .tat-tat{color:var(--st-newhire);}
+  .tat-overdue-label{color:var(--st-separation); font-weight:700;}
+  /* Keep the TAT badge readable (green) on a completed row even though
+     tr.task-done otherwise mutes every cell to text-dim. */
+  tr.task-done .tat-tat{color:var(--st-newhire) !important; text-decoration:none;}
 
   .empty-state{
     text-align:center;
@@ -1835,6 +1843,14 @@ function formatDisplayDate(iso){
   return new Date(y, m - 1, d).toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 }
 
+function daysBetweenISO(fromIso, toIso){
+  const [fy, fm, fd] = fromIso.split('-').map(Number);
+  const [ty, tm, td] = toIso.split('-').map(Number);
+  const from = new Date(fy, fm - 1, fd);
+  const to = new Date(ty, tm - 1, td);
+  return Math.round((to - from) / 86400000);
+}
+
 function tasksSorted(tasks){
   // Soonest due date first; tasks with no due date sink to the bottom.
   return [...tasks].sort((a, b) => {
@@ -1869,6 +1885,7 @@ function renderTasksView(){
       <th style="width:140px;">Date Added</th>
       <th style="width:160px;">Due Date</th>
       <th style="width:110px;text-align:center;">Status</th>
+      <th style="width:150px;">TAT / Overdue</th>
       <th style="width:34px;"></th>
     </tr></thead><tbody></tbody>`;
   const tbody = table.querySelector('tbody');
@@ -1878,12 +1895,23 @@ function renderTasksView(){
     const tr = document.createElement('tr');
     if(task.done) tr.classList.add('task-done');
     else if(overdue) tr.classList.add('task-overdue');
+
+    let tatCell = '<span style="color:var(--text-dim);">—</span>';
+    if(task.done && task.completedDate){
+      const tat = Math.max(0, daysBetweenISO(task.dateAdded, task.completedDate));
+      tatCell = `<span class="tat-tat">TAT: ${tat} day${tat === 1 ? '' : 's'}</span>`;
+    } else if(overdue){
+      const runningDays = daysBetweenISO(task.dueDate, today);
+      tatCell = `<span class="tat-overdue-label">Overdue: ${runningDays} day${runningDays === 1 ? '' : 's'}</span>`;
+    }
+
     tr.innerHTML = `
       <td>${i + 1}</td>
       <td><input type="text" class="task-text-input" value="${(task.text || '').replace(/"/g,'&quot;')}" placeholder="Describe the task..."></td>
       <td>${formatDisplayDate(task.dateAdded)}</td>
       <td><input type="date" class="task-due-input" value="${task.dueDate || ''}"></td>
       <td style="text-align:center;"><button class="logs-toggle ${task.done ? 'checked' : ''}">${task.done ? 'Done' : 'Pending'}</button></td>
+      <td class="tat-cell">${tatCell}</td>
       <td style="text-align:center;"><button class="task-del-btn" title="Delete this task" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>
     `;
     tr.querySelector('.task-text-input').addEventListener('input', function(e){
@@ -1897,6 +1925,9 @@ function renderTasksView(){
     });
     tr.querySelector('.logs-toggle').addEventListener('click', function(){
       task.done = !task.done;
+      // Stamp (or clear) the completion date so TAT is calculated from when
+      // the status actually changed to Done, not recomputed against "today".
+      task.completedDate = task.done ? todayISO() : null;
       saveAffiliate(TASKS_KEY);
       renderTasksView();
     });
@@ -1911,7 +1942,7 @@ function renderTasksView(){
 
   if(tasks.length === 0){
     const empty = document.createElement('tr');
-    empty.innerHTML = `<td colspan="6" style="text-align:center;color:var(--text-dim);padding:30px;">No tasks yet — click "+ Add Task" to add one.</td>`;
+    empty.innerHTML = `<td colspan="7" style="text-align:center;color:var(--text-dim);padding:30px;">No tasks yet — click "+ Add Task" to add one.</td>`;
     tbody.appendChild(empty);
   }
 
@@ -1925,7 +1956,8 @@ function renderTasksView(){
       text: text.trim(),
       dateAdded: todayISO(),
       dueDate: '',
-      done: false
+      done: false,
+      completedDate: null
     });
     saveAffiliate(TASKS_KEY);
     renderTasksView();
@@ -2379,10 +2411,14 @@ document.getElementById('statsRow').addEventListener('click', function(e){
 document.getElementById('exportBtn').addEventListener('click', function(){
   if(currentAffiliate === TASKS_KEY){
     const tasks = store[TASKS_KEY].tasks;
+    const today = todayISO();
     const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
-    let csv = 'NO,TASK,DATE ADDED,DUE DATE,STATUS\n';
+    let csv = 'NO,TASK,DATE ADDED,DUE DATE,STATUS,TAT / OVERDUE\n';
     tasks.forEach((t, i) => {
-      csv += [i+1, t.text, t.dateAdded, t.dueDate, t.done ? 'Done' : 'Pending'].map(esc).join(',') + '\n';
+      let tatCol = '';
+      if(t.done && t.completedDate) tatCol = `TAT: ${Math.max(0, daysBetweenISO(t.dateAdded, t.completedDate))} days`;
+      else if(!t.done && t.dueDate && t.dueDate < today) tatCol = `Overdue: ${daysBetweenISO(t.dueDate, today)} days`;
+      csv += [i+1, t.text, t.dateAdded, t.dueDate, t.done ? 'Done' : 'Pending', tatCol].map(esc).join(',') + '\n';
     });
     const blob = new Blob([csv], {type:'text/csv'});
     const url = URL.createObjectURL(blob);
