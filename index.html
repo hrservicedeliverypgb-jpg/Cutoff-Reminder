@@ -472,6 +472,9 @@
   /* Dec Make-up: any row with a typed remark gets a soft highlight so it's
      easy to spot which employees have notes among all the checkbox columns. */
   tr.mu-has-remark{background:#fff3cd !important;}
+  /* A remark mentioning "resign" gets its own light-red flag, taking
+     priority over the plain has-a-note amber highlight. */
+  tr.mu-resigned{background:#fbdcdc !important;}
 
   .tat-cell{font-size:12px; font-weight:600; white-space:nowrap;}
   .tat-tat{color:var(--st-newhire);}
@@ -1688,7 +1691,10 @@ function renderMakeupView(){
 
   mu.rows.forEach((row, ri) => {
     const tr = document.createElement('tr');
-    if(row.remarks && row.remarks.trim()) tr.classList.add('mu-has-remark');
+    const hasRemark = !!(row.remarks && row.remarks.trim());
+    const resigning = hasRemark && /resign/i.test(row.remarks);
+    if(resigning) tr.classList.add('mu-resigned');
+    else if(hasRemark) tr.classList.add('mu-has-remark');
     const cells = mu.dates.map(d => {
       const key = d.makeup.replace(/"/g,'&quot;');
       const presentOn = !!(row.present && row.present[d.makeup]);
@@ -1714,7 +1720,10 @@ function renderMakeupView(){
     if(muSearchTerm && !tr.dataset.search.includes(muSearchTerm.toLowerCase())) tr.style.display = 'none';
     tr.querySelector('.mu-remarks-input').addEventListener('input', function(e){
       row.remarks = e.target.value;
-      tr.classList.toggle('mu-has-remark', !!e.target.value.trim());
+      const hasRemarkNow = !!e.target.value.trim();
+      const resigningNow = hasRemarkNow && /resign/i.test(e.target.value);
+      tr.classList.toggle('mu-resigned', resigningNow);
+      tr.classList.toggle('mu-has-remark', hasRemarkNow && !resigningNow);
       saveAffiliate(makeupAffiliate);
     });
     tr.querySelector('.mu-select').addEventListener('change', function(){
