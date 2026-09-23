@@ -476,6 +476,15 @@
      priority over the plain has-a-note amber highlight. */
   tr.mu-resigned{background:#fbdcdc !important;}
 
+  /* December 22 & 29 double as reference dates for that month's legal
+     holidays: their whole column (header + every cell) is flagged gold,
+     and any employee marked X (not on duty) in it turns dark red instead,
+     so those specific cases jump out immediately. */
+  th.mu-important-date{background:#ffd54f !important;}
+  th.mu-important-date div{color:#5c3d00 !important;}
+  td.mu-important-date{background:#fff3c4 !important;}
+  td.mu-important-notduty{background:#7a1220 !important;}
+
   .tat-cell{font-size:12px; font-weight:600; white-space:nowrap;}
   .tat-tat{color:var(--st-newhire);}
   .tat-overdue-label{color:var(--st-separation); font-weight:700;}
@@ -654,6 +663,12 @@ const DEFAULT_MAKEUP_DATES = [
   {makeup:'December 28, 2026', covers:'October 03, 2026'},
   {makeup:'December 29, 2026', covers:'October 17, 2026'}
 ];
+
+// December 22 and 29 double as reference dates for that month's legal
+// holidays, so their whole column (header + every cell) gets flagged.
+function isImportantMakeupDate(makeupLabel){
+  return /december\s*22\b|december\s*29\b/i.test(makeupLabel || '');
+}
 
 function getMakeup(affKey){
   const aff = store[affKey];
@@ -1815,7 +1830,7 @@ function renderMakeupView(){
   const table = document.createElement('table');
   table.className = 'makeup-table';
   const dateHeads = mu.dates.map((d, i) => `
-    <th style="text-align:center;min-width:130px;">
+    <th style="text-align:center;min-width:130px;" class="${isImportantMakeupDate(d.makeup) ? 'mu-important-date' : ''}">
       <div style="color:var(--st-newhire);font-size:11px;white-space:nowrap;">${d.makeup}</div>
       <div style="color:var(--text-dim);font-weight:500;font-size:10px;text-transform:none;letter-spacing:0;white-space:nowrap;">covers ${d.covers} <button class="mu-del-date" data-i="${i}" title="Remove this date column" style="background:none;border:none;color:var(--st-separation);cursor:pointer;font-size:12px;">×</button></div>
     </th>`).join('');
@@ -1843,7 +1858,9 @@ function renderMakeupView(){
       const key = d.makeup.replace(/"/g,'&quot;');
       const presentOn = !!(row.present && row.present[d.makeup]);
       const notDutyOn = !!(row.notOnDuty && row.notOnDuty[d.makeup]);
-      return `<td style="text-align:center;white-space:nowrap;">
+      const important = isImportantMakeupDate(d.makeup);
+      const cellClass = important ? (notDutyOn ? 'mu-important-date mu-important-notduty' : 'mu-important-date') : '';
+      return `<td style="text-align:center;white-space:nowrap;" class="${cellClass}" data-important="${important ? '1' : '0'}">
         <input type="checkbox" class="mu-present" data-key="${key}" ${presentOn ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;margin-right:6px;">
         <button type="button" class="mu-notduty" data-key="${key}" title="Mark as NOT on duty for this date" style="width:22px;height:22px;border:1px solid var(--navy-600);border-radius:4px;background:${notDutyOn ? '#1e3a8a' : 'transparent'};color:${notDutyOn ? '#ffffff' : 'var(--text-dim)'};font-weight:700;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle;">${notDutyOn ? '✕' : ''}</button>
       </td>`;
@@ -1889,6 +1906,8 @@ function renderMakeupView(){
         btn.textContent = on ? '✕' : '';
         btn.style.background = on ? '#1e3a8a' : 'transparent';
         btn.style.color = on ? '#ffffff' : 'var(--text-dim)';
+        const td = btn.closest('td');
+        if(td && td.dataset.important === '1') td.classList.toggle('mu-important-notduty', on);
         saveAffiliate(makeupAffiliate);
       });
     });
