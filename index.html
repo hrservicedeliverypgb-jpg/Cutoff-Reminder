@@ -693,12 +693,27 @@ const storageBackend = hasRemoteStorage ? window.storage : {
   }
 };
 
-function setSyncStatus(s){
+let lastSyncErrorMsg = '';
+
+// Turns a caught error from the GitHub API (or a network failure) into a
+// message that tells the user what actually went wrong and what to do,
+// instead of the old one-size-fits-all "check connection / token".
+function describeSyncError(e){
+  if(!e) return 'Sync failed — check connection / token';
+  if(e.status === 401) return 'GitHub token expired or was revoked — click Cloud Sync above to reconnect.';
+  if(e.status === 403) return 'GitHub blocked the request (rate limit, or the token is missing "gist" permission) — reconnect from Cloud Sync if this keeps happening.';
+  if(e.status === 404) return 'Sync file not found — recreating it automatically.';
+  if(e.message && /fetch|network/i.test(e.message)) return 'No internet connection — will retry automatically.';
+  return 'Sync failed (' + (e.message || 'unknown error') + ') — will retry automatically.';
+}
+
+function setSyncStatus(s, err){
   syncStatus = s;
+  if(s === 'error') lastSyncErrorMsg = describeSyncError(err);
   const el = document.getElementById('syncIndicator');
   if(!el) return;
   if(s === 'syncing'){ el.textContent = cloudToken ? 'Syncing…' : 'Saving…'; el.style.color = '#cfc2ea'; }
-  else if(s === 'error'){ el.textContent = cloudToken ? 'Sync failed — check connection / token' : 'Save failed — browser storage unavailable'; el.style.color = '#ff9fb2'; }
+  else if(s === 'error'){ el.textContent = cloudToken ? lastSyncErrorMsg : 'Save failed — browser storage unavailable'; el.style.color = '#ff9fb2'; }
   else { el.textContent = cloudToken ? 'Synced across devices' : 'Saved on this device only'; el.style.color = cloudToken ? '#8ff0b4' : '#cfc2ea'; }
 }
 
@@ -742,7 +757,7 @@ async function saveAffiliate(affKey){
     await storageBackend.set(META_KEY, JSON.stringify(metaUpdatedAt), false);
   }catch(e){
     console.error('Storage error', e);
-    setSyncStatus('error');
+    setSyncStatus('error', e);
     return;
   }
   if(cloudToken){ schedulePush(); }
@@ -886,7 +901,7 @@ async function doPush(){
       return;
     }
     console.error('Cloud push failed', e);
-    setSyncStatus('error');
+    setSyncStatus('error', e);
   }finally{
     pushing = false;
     if(pushQueued){ pushQueued = false; schedulePush(); }
@@ -898,7 +913,12 @@ async function checkForRemoteChanges(){
   try{
     const changed = await pullFromCloud();
     if(changed) renderAll();
-  }catch(e){ /* transient network issue — next check will retry */ }
+  }catch(e){
+    // A bad/expired token won't fix itself on retry, so tell the user now
+    // instead of leaving a stale "Synced" indicator; plain network hiccups
+    // stay silent since the next check just retries.
+    if(e && (e.status === 401 || e.status === 403)) setSyncStatus('error', e);
+  }
 }
 
 /* ---------- Sync link (…#sync=xxx) ----------
@@ -926,13 +946,18 @@ function updateSyncBtn(){
 function openSyncModal(){
   const body = document.getElementById('syncModalBody');
   if(cloudToken){
+    const errorBanner = (syncStatus === 'error' && lastSyncErrorMsg)
+      ? `<p style="background:#3a1220;border:1px solid var(--st-separation);color:#ffb3c0;padding:10px 12px;border-radius:7px;font-size:12.5px;">${lastSyncErrorMsg}</p>`
+      : '';
     body.innerHTML = `
+      ${errorBanner}
       <p>Cloud sync is <b style="color:var(--st-newhire);">ON</b>. Every change saves automatically to a secret Gist on your GitHub account, and any device using the same token stays up to date.</p>
       <p><b>Easiest way to add another device or browser:</b> copy your personal sync link below, then open (and bookmark) it there — sync turns on automatically, no typing needed.</p>
       <p style="font-size:12px;color:var(--st-separation);">Keep the link private: anyone who has it can view and edit your tracker data.</p>
       <div style="display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;">
         <button class="btn btn-gold" id="copySyncLinkBtn">Copy Sync Link</button>
         <button class="btn" id="syncNowBtn">Sync Now</button>
+        <button class="btn" id="syncReconnectBtn">Update Token</button>
         <button class="btn" id="syncCloseBtn">Close</button>
         <button class="btn" id="syncDisconnectBtn" style="margin-left:auto;color:var(--st-separation);">Turn Off on This Device</button>
       </div>`;
@@ -949,9 +974,10 @@ function openSyncModal(){
     document.getElementById('syncNowBtn').addEventListener('click', async () => {
       setSyncStatus('syncing');
       try{ const changed = await pullFromCloud(); await doPush(); if(changed) renderAll(); }
-      catch(e){ setSyncStatus('error'); }
+      catch(e){ setSyncStatus('error', e); }
       closeSyncModal();
     });
+    document.getElementById('syncReconnectBtn').addEventListener('click', renderTokenForm);
     document.getElementById('syncDisconnectBtn').addEventListener('click', async () => {
       if(!confirm('Turn off cloud sync on this device? Your data stays here and in the cloud — this device just stops syncing until you paste the token again.')) return;
       cloudToken = ''; cloudGistId = '';
@@ -965,7 +991,19 @@ function openSyncModal(){
     });
     document.getElementById('syncCloseBtn').addEventListener('click', closeSyncModal);
   } else {
-    body.innerHTML = `
+    renderTokenForm();
+  }
+  document.getElementById('syncModal').style.display = 'flex';
+  const input = document.getElementById('tokenInput');
+  if(input) input.focus();
+}
+
+// The "paste a GitHub token" form — shown when sync isn't connected yet, and
+// also reachable via "Update Token" while connected (e.g. after an expired
+// or revoked token starts failing pushes).
+function renderTokenForm(){
+  const body = document.getElementById('syncModalBody');
+  body.innerHTML = `
       <p>Turn this on to keep the tracker identical on every device you use (office PC, laptop, phone). Your data is stored in a <b>secret Gist</b> on your own GitHub account — free, private to your account, nothing to install.</p>
       <b style="color:var(--text-hi);">One-time setup (about 2 minutes):</b>
       <ol style="margin:8px 0 14px;padding-left:20px;">
@@ -980,13 +1018,10 @@ function openSyncModal(){
         <button class="btn btn-gold" id="tokenConnectBtn">Connect &amp; Sync</button>
         <button class="btn" id="syncCancelBtn">Cancel</button>
       </div>`;
-    document.getElementById('tokenConnectBtn').addEventListener('click', connectCloud);
-    document.getElementById('tokenInput').addEventListener('keydown', e => { if(e.key === 'Enter') connectCloud(); });
-    document.getElementById('syncCancelBtn').addEventListener('click', closeSyncModal);
-  }
-  document.getElementById('syncModal').style.display = 'flex';
-  const input = document.getElementById('tokenInput');
-  if(input) input.focus();
+  document.getElementById('tokenConnectBtn').addEventListener('click', connectCloud);
+  document.getElementById('tokenInput').addEventListener('keydown', e => { if(e.key === 'Enter') connectCloud(); });
+  document.getElementById('syncCancelBtn').addEventListener('click', closeSyncModal);
+  document.getElementById('tokenInput').focus();
 }
 
 function closeSyncModal(){
@@ -2563,7 +2598,7 @@ document.getElementById('exportBtn').addEventListener('click', function(){
       setSyncStatus('idle');
     }catch(e){
       console.error('Initial cloud pull failed', e);
-      setSyncStatus('error');
+      setSyncStatus('error', e);
     }
   } else {
     setSyncStatus('idle');
