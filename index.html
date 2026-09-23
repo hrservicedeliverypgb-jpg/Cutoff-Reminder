@@ -667,13 +667,19 @@ function getMakeup(affKey){
 // "ranks" on the main tracker (added to the make-up list before this field
 // existed, or added via "Add from Cut-off List", which doesn't copy
 // remarks over). So the RANKS grouping checks both: the make-up row's own
-// note, and — as a fallback — that employee's remarks on the main tracker.
+// note, and — as a fallback — that employee's remarks on the main tracker,
+// across every cut-off period on record (not just the currently selected
+// one), since the tag may have been typed in an earlier period.
 function muCombinedRemarks(affKey, row){
   const own = row.remarks || '';
   if(own.trim()) return own;
   const aff = store[affKey];
-  const st = aff.currentPeriod && aff.trackerState[aff.currentPeriod] && aff.trackerState[aff.currentPeriod][row.idno];
-  return (st && st.remarks) || '';
+  const periods = aff.periodOrder || [];
+  for(const p of periods){
+    const st = aff.trackerState[p] && aff.trackerState[p][row.idno];
+    if(st && st.remarks && st.remarks.trim()) return st.remarks;
+  }
+  return '';
 }
 
 // Per-affiliate in-memory state, hydrated from the storage backend (Claude artifact storage when available, otherwise this browser's localStorage)
