@@ -1733,11 +1733,9 @@ function renderMakeupView(){
     const cells = mu.dates.map(d => {
       const key = d.makeup.replace(/"/g,'&quot;');
       const presentOn = !!(row.present && row.present[d.makeup]);
-      const flagOn = !!(row.onMakeup && row.onMakeup[d.makeup]);
       const notDutyOn = !!(row.notOnDuty && row.notOnDuty[d.makeup]);
       return `<td style="text-align:center;white-space:nowrap;">
         <input type="checkbox" class="mu-present" data-key="${key}" ${presentOn ? 'checked' : ''} title="Check if present" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-newhire);vertical-align:middle;margin-right:6px;">
-        <input type="checkbox" class="mu-onmakeup" data-key="${key}" ${flagOn ? 'checked' : ''} title="Mark as working the make-up schedule on this date" style="width:19px;height:19px;cursor:pointer;accent-color:var(--st-separation);vertical-align:middle;margin-right:6px;">
         <button type="button" class="mu-notduty" data-key="${key}" title="Mark as NOT on duty for this date" style="width:22px;height:22px;border:1px solid var(--navy-600);border-radius:4px;background:${notDutyOn ? '#1e3a8a' : 'transparent'};color:${notDutyOn ? '#ffffff' : 'var(--text-dim)'};font-weight:700;font-size:13px;line-height:1;cursor:pointer;vertical-align:middle;">${notDutyOn ? '✕' : ''}</button>
       </td>`;
     }).join('');
@@ -1770,14 +1768,6 @@ function renderMakeupView(){
         const key = cb.dataset.key;
         row.present = row.present || {};
         row.present[key] = cb.checked;
-        saveAffiliate(makeupAffiliate);
-      });
-    });
-    tr.querySelectorAll('.mu-onmakeup').forEach(cb => {
-      cb.addEventListener('change', () => {
-        const key = cb.dataset.key;
-        row.onMakeup = row.onMakeup || {};
-        row.onMakeup[key] = cb.checked;
         saveAffiliate(makeupAffiliate);
       });
     });
