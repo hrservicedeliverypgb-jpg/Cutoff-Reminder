@@ -697,11 +697,49 @@ function storageKey(affKey){ return `affTracker_${affKey}`; }
 
 // Storage backend: use Claude's persistent artifact storage when the page runs
 // inside Claude.ai; otherwise (GitHub Pages, opened as a local file, etc.)
-// fall back to the browser's localStorage so saving still works.
+// fall back to IndexedDB, which — unlike localStorage's hard ~5-10MB per-site
+// cap — scales with available disk space, so years of cut-off history don't
+// eventually break saving. Falls back further to localStorage itself only if
+// IndexedDB isn't available at all (very old browser, some private-mode setups).
 const hasRemoteStorage = typeof window.storage === 'object' && window.storage !== null
   && typeof window.storage.get === 'function' && typeof window.storage.set === 'function';
 
-const storageBackend = hasRemoteStorage ? window.storage : {
+const IDB_NAME = 'cutoffTrackerDB';
+const IDB_STORE = 'kv';
+const hasIndexedDB = typeof indexedDB !== 'undefined';
+let idbOpenPromise = null;
+
+function openIDB(){
+  if(idbOpenPromise) return idbOpenPromise;
+  idbOpenPromise = new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = () => { req.result.createObjectStore(IDB_STORE); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  return idbOpenPromise;
+}
+
+async function idbGet(key){
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const req = db.transaction(IDB_STORE, 'readonly').objectStore(IDB_STORE).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function idbSet(key, value){
+  const db = await openIDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, 'readwrite');
+    tx.objectStore(IDB_STORE).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+const localStorageBackend = {
   async get(key){
     const v = localStorage.getItem(key);
     return v === null ? null : { value: v };
@@ -711,6 +749,40 @@ const storageBackend = hasRemoteStorage ? window.storage : {
     return { key, value };
   }
 };
+
+const indexedDBBackend = {
+  async get(key){
+    const v = await idbGet(key);
+    return v === undefined ? null : { value: v };
+  },
+  async set(key, value){
+    await idbSet(key, value);
+    return { key, value };
+  }
+};
+
+const storageBackend = hasRemoteStorage ? window.storage : (hasIndexedDB ? indexedDBBackend : localStorageBackend);
+
+// One-time move of anything already saved under the old localStorage keys
+// into IndexedDB, then clears those keys to reclaim the quota they used —
+// so switching backends doesn't strand (or duplicate) existing saved data.
+// Reading an oversized localStorage entry still works even once its quota
+// is exhausted; only writing new data was ever blocked.
+async function migrateLocalStorageToIDB(){
+  if(hasRemoteStorage || !hasIndexedDB) return;
+  const marker = await idbGet('__migratedFromLocalStorage');
+  if(marker) return;
+  const keysToMove = [storageKey(TASKS_KEY), TOKEN_KEY, GISTID_KEY, META_KEY]
+    .concat(AFFILIATES.map(a => storageKey(a.key)));
+  for(const key of keysToMove){
+    try{
+      const v = localStorage.getItem(key);
+      if(v !== null) await idbSet(key, v);
+    }catch(e){ console.error('Migrating key to IndexedDB failed', key, e); }
+  }
+  await idbSet('__migratedFromLocalStorage', 'true');
+  keysToMove.forEach(key => { try{ localStorage.removeItem(key); }catch(e){} });
+}
 
 let lastSyncErrorMsg = '';
 
@@ -2595,6 +2667,7 @@ document.getElementById('exportBtn').addEventListener('click', function(){
 });
 
 (async function init(){
+  try{ await migrateLocalStorageToIDB(); }catch(e){ console.error('Migration to IndexedDB failed', e); }
   await loadFromStorage();
   try{
     const t = await storageBackend.get(TOKEN_KEY, false);
