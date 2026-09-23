@@ -469,6 +469,10 @@
   tr.task-overdue td, tr.task-overdue .task-text-input, tr.task-overdue .task-due-input{color:#ffffff !important; font-weight:700;}
   tr.task-overdue .task-due-input{background:#7a1220 !important; border-color:#ffffff !important;}
 
+  /* Dec Make-up: any row with a typed remark gets a soft highlight so it's
+     easy to spot which employees have notes among all the checkbox columns. */
+  tr.mu-has-remark{background:#fff3cd !important;}
+
   .tat-cell{font-size:12px; font-weight:600; white-space:nowrap;}
   .tat-tat{color:var(--st-newhire);}
   .tat-overdue-label{color:var(--st-separation); font-weight:700;}
@@ -782,6 +786,7 @@ function buildSyncDoc(){
   AFFILIATES.forEach(a => {
     doc.affiliates[a.key] = { data: store[a.key], updatedAt: metaUpdatedAt[a.key] || 0 };
   });
+  doc.tasks = { data: store[TASKS_KEY], updatedAt: metaUpdatedAt[TASKS_KEY] || 0 };
   return doc;
 }
 
@@ -832,6 +837,15 @@ async function pullFromCloud(){
       }catch(e){ console.error('Local cache write failed', e); }
       changed = true;
     }
+  }
+  if(doc.tasks && doc.tasks.data && (doc.tasks.updatedAt || 0) > (metaUpdatedAt[TASKS_KEY] || 0)){
+    store[TASKS_KEY] = { tasks: Array.isArray(doc.tasks.data.tasks) ? doc.tasks.data.tasks : [] };
+    metaUpdatedAt[TASKS_KEY] = doc.tasks.updatedAt || 0;
+    try{
+      await storageBackend.set(storageKey(TASKS_KEY), JSON.stringify(store[TASKS_KEY]), false);
+      await storageBackend.set(META_KEY, JSON.stringify(metaUpdatedAt), false);
+    }catch(e){ console.error('Local cache write failed', e); }
+    changed = true;
   }
   return changed;
 }
@@ -1666,7 +1680,7 @@ function renderMakeupView(){
   table.innerHTML = `
     <thead><tr>
       <th style="width:34px;"><input type="checkbox" id="muSelectAll" title="Select all" style="width:17px;height:17px;cursor:pointer;vertical-align:middle;"></th>
-      <th>No.</th><th>ID No.</th><th>Last Name</th><th>First Name</th><th>Date Hired</th>
+      <th>No.</th><th>ID No.</th><th>Last Name</th><th>First Name</th><th>Date Hired</th><th>Remarks</th>
       ${dateHeads}
       <th></th>
     </tr></thead><tbody></tbody>`;
@@ -1674,6 +1688,7 @@ function renderMakeupView(){
 
   mu.rows.forEach((row, ri) => {
     const tr = document.createElement('tr');
+    if(row.remarks && row.remarks.trim()) tr.classList.add('mu-has-remark');
     const cells = mu.dates.map(d => {
       const key = d.makeup.replace(/"/g,'&quot;');
       const presentOn = !!(row.present && row.present[d.makeup]);
@@ -1692,10 +1707,16 @@ function renderMakeupView(){
       <td class="name-cell">${row.lastname}</td>
       <td class="name-cell">${row.firstname}</td>
       <td>${row.dateHired || ''}</td>
+      <td><input type="text" class="remarks-input mu-remarks-input" value="${(row.remarks || '').replace(/"/g,'&quot;')}" placeholder="Add a note..."></td>
       ${cells}
       <td style="text-align:center;"><button class="mu-del-row" title="Remove employee from make-up list" style="background:transparent;border:none;color:var(--text-dim);font-size:16px;cursor:pointer;">×</button></td>`;
     tr.dataset.search = (row.lastname + ' ' + row.firstname + ' ' + row.idno).toLowerCase();
     if(muSearchTerm && !tr.dataset.search.includes(muSearchTerm.toLowerCase())) tr.style.display = 'none';
+    tr.querySelector('.mu-remarks-input').addEventListener('input', function(e){
+      row.remarks = e.target.value;
+      tr.classList.toggle('mu-has-remark', !!e.target.value.trim());
+      saveAffiliate(makeupAffiliate);
+    });
     tr.querySelector('.mu-select').addEventListener('change', function(){
       if(this.checked) muSelected.add(row.idno); else muSelected.delete(row.idno);
       updateMuBulkControls(mu);
@@ -1740,7 +1761,7 @@ function renderMakeupView(){
 
   if(mu.rows.length === 0){
     const empty = document.createElement('tr');
-    empty.innerHTML = `<td colspan="${7 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
+    empty.innerHTML = `<td colspan="${8 + mu.dates.length}" style="text-align:center;color:var(--text-dim);padding:30px;">No employees on the make-up list yet — use "Add from Cut-off List" to tick them from ${makeupAffiliate}'s cut-off, or "+ Add Employee" to type one in.</td>`;
     tbody.appendChild(empty);
   }
 
@@ -2466,10 +2487,10 @@ document.getElementById('exportBtn').addEventListener('click', function(){
   if(currentAffiliate === MAKEUP_KEY){
     const mu = getMakeup(makeupAffiliate);
     const esc = v => `"${String(v ?? '').replace(/"/g,'""')}"`;
-    let csv = ['NO','IDNO','LASTNAME','FIRSTNAME','DATE HIRED']
+    let csv = ['NO','IDNO','LASTNAME','FIRSTNAME','DATE HIRED','REMARKS']
       .concat(mu.dates.map(d => `${d.makeup} (covers ${d.covers})`)).map(esc).join(',') + '\n';
     mu.rows.forEach((row, i) => {
-      csv += [i+1, row.idno, row.lastname, row.firstname, row.dateHired || '']
+      csv += [i+1, row.idno, row.lastname, row.firstname, row.dateHired || '', row.remarks || '']
         .concat(mu.dates.map(d => (row.present && row.present[d.makeup]) ? 'Present' : ''))
         .map(esc).join(',') + '\n';
     });
