@@ -663,6 +663,19 @@ function getMakeup(affKey){
   return aff.makeup;
 }
 
+// A make-up row's own Remarks may still be blank for someone already tagged
+// "ranks" on the main tracker (added to the make-up list before this field
+// existed, or added via "Add from Cut-off List", which doesn't copy
+// remarks over). So the RANKS grouping checks both: the make-up row's own
+// note, and — as a fallback — that employee's remarks on the main tracker.
+function muCombinedRemarks(affKey, row){
+  const own = row.remarks || '';
+  if(own.trim()) return own;
+  const aff = store[affKey];
+  const st = aff.currentPeriod && aff.trackerState[aff.currentPeriod] && aff.trackerState[aff.currentPeriod][row.idno];
+  return (st && st.remarks) || '';
+}
+
 // Per-affiliate in-memory state, hydrated from the storage backend (Claude artifact storage when available, otherwise this browser's localStorage)
 let store = {};
 AFFILIATES.forEach(a => store[a.key] = { workbookData:{}, periodOrder:[], trackerState:{}, currentPeriod:null });
@@ -1686,8 +1699,8 @@ function renderMakeupView(){
   let displayRows = mu.rows;
   let ranksSectionStartsAt = -1;
   if(makeupAffiliate === 'PHI'){
-    const normalRows = mu.rows.filter(r => !/ranks/i.test(r.remarks || ''));
-    const ranksRows = mu.rows.filter(r => /ranks/i.test(r.remarks || ''));
+    const normalRows = mu.rows.filter(r => !/ranks/i.test(muCombinedRemarks(makeupAffiliate, r)));
+    const ranksRows = mu.rows.filter(r => /ranks/i.test(muCombinedRemarks(makeupAffiliate, r)));
     displayRows = normalRows.concat(ranksRows);
     if(ranksRows.length > 0) ranksSectionStartsAt = normalRows.length;
   }
