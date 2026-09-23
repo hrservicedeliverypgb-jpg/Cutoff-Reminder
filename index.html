@@ -718,7 +718,8 @@ let lastSyncErrorMsg = '';
 // message that tells the user what actually went wrong and what to do,
 // instead of the old one-size-fits-all "check connection / token".
 function describeSyncError(e){
-  if(!e) return 'Sync failed — check connection / token';
+  if(!e) return 'Save failed — browser storage unavailable';
+  if(e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')) return 'This browser is full — delete an old cut-off period you no longer need (open that affiliate\'s tab, click the × on an old period) to free up space, then it will save again.';
   if(e.status === 401) return 'GitHub token expired or was revoked — click Cloud Sync above to reconnect.';
   if(e.status === 403) return 'GitHub blocked the request (rate limit, or the token is missing "gist" permission) — reconnect from Cloud Sync if this keeps happening.';
   if(e.status === 404) return 'Sync file not found — recreating it automatically.';
@@ -732,7 +733,7 @@ function setSyncStatus(s, err){
   const el = document.getElementById('syncIndicator');
   if(!el) return;
   if(s === 'syncing'){ el.textContent = cloudToken ? 'Syncing…' : 'Saving…'; el.style.color = '#cfc2ea'; }
-  else if(s === 'error'){ el.textContent = cloudToken ? lastSyncErrorMsg : 'Save failed — browser storage unavailable'; el.style.color = '#ff9fb2'; }
+  else if(s === 'error'){ el.textContent = lastSyncErrorMsg; el.style.color = '#ff9fb2'; }
   else { el.textContent = cloudToken ? 'Synced across devices' : 'Saved on this device only'; el.style.color = cloudToken ? '#8ff0b4' : '#cfc2ea'; }
 }
 
