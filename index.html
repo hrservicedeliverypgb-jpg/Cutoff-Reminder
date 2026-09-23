@@ -1680,6 +1680,18 @@ function renderMakeupView(){
   const liveIdnos = new Set(mu.rows.map(r => r.idno));
   [...muSelected].forEach(idno => { if(!liveIdnos.has(idno)) muSelected.delete(idno); });
 
+  // PHI-only: employees whose Remarks mention "ranks" render in their own
+  // labeled section at the bottom, same alphabetical order preserved within
+  // each group. Every other affiliate renders mu.rows as-is.
+  let displayRows = mu.rows;
+  let ranksSectionStartsAt = -1;
+  if(makeupAffiliate === 'PHI'){
+    const normalRows = mu.rows.filter(r => !/ranks/i.test(r.remarks || ''));
+    const ranksRows = mu.rows.filter(r => /ranks/i.test(r.remarks || ''));
+    displayRows = normalRows.concat(ranksRows);
+    if(ranksRows.length > 0) ranksSectionStartsAt = normalRows.length;
+  }
+
   const wrap = document.getElementById('tableWrap');
   wrap.innerHTML = '';
 
@@ -1724,7 +1736,12 @@ function renderMakeupView(){
     </tr></thead><tbody></tbody>`;
   const tbody = table.querySelector('tbody');
 
-  mu.rows.forEach((row, ri) => {
+  displayRows.forEach((row, ri) => {
+    if(ri === ranksSectionStartsAt){
+      const sectionTr = document.createElement('tr');
+      sectionTr.innerHTML = `<td colspan="${8 + mu.dates.length}" style="background:var(--navy-800);color:var(--aff);font-weight:700;text-transform:uppercase;letter-spacing:0.08em;font-size:11.5px;padding:8px 14px;">RANKS</td>`;
+      tbody.appendChild(sectionTr);
+    }
     const tr = document.createElement('tr');
     const hasRemark = !!(row.remarks && row.remarks.trim());
     const resigning = hasRemark && /resign/i.test(row.remarks);
@@ -1785,7 +1802,7 @@ function renderMakeupView(){
     });
     tr.querySelector('.mu-del-row').addEventListener('click', () => {
       if(!confirm(`Remove ${row.lastname}, ${row.firstname} from the make-up list?`)) return;
-      mu.rows.splice(ri, 1);
+      mu.rows.splice(mu.rows.indexOf(row), 1);
       muSelected.delete(row.idno);
       saveAffiliate(makeupAffiliate);
       renderMakeupView();
